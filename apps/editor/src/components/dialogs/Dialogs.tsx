@@ -13,6 +13,8 @@ import { SHORTCUTS } from '@editor/lib/shortcuts';
 import { Button, Dialog, Field, Kbd, Select, TextInput, cx } from '../ui/primitives';
 import { NodeIcon } from '../ui/NodeIcon';
 import { McpDialog } from './McpDialog';
+import { SourceControlDialog } from '../git/SourceControlDialog';
+import { GitHubDialog } from '../git/GitHubDialog';
 
 export function Dialogs() {
   const dialog = useUi((s) => s.dialog);
@@ -32,6 +34,10 @@ export function Dialogs() {
       return <ShortcutsDialog onClose={close} />;
     case 'mcp':
       return <McpDialog onClose={close} />;
+    case 'git':
+      return <SourceControlDialog onClose={close} />;
+    case 'github':
+      return <GitHubDialog onClose={close} />;
     default:
       return null;
   }

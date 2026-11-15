@@ -135,13 +135,14 @@ describe('GitHub token vault and proxy', () => {
 });
 
 describe('Cloudflare deploy credentials', () => {
-  it('seals values the way GitHub opens them', () => {
+  it('seals values the way GitHub opens them', async () => {
     const keys = nacl.box.keyPair();
-    const sealed = sealedBox(new TextEncoder().encode('secret value'), keys.publicKey);
+    const sealed = await sealedBox(new TextEncoder().encode('secret value'), keys.publicKey);
     expect(sealed.length).toBe(32 + 16 + 12);
-    expect(new TextDecoder().decode(openSealedBox(sealed, keys.publicKey, keys.secretKey)!)).toBe('secret value');
+    expect(new TextDecoder().decode((await openSealedBox(sealed, keys.publicKey, keys.secretKey))!)).toBe('secret value');
     // Every sealing uses a fresh key, so the same value never looks the same twice.
-    expect(sealedBox(new TextEncoder().encode('secret value'), keys.publicKey)).not.toEqual(sealed);
+    expect(await sealedBox(new TextEncoder().encode('secret value'), keys.publicKey)).not.toEqual(sealed);
+    expect(await openSealedBox(sealed, nacl.box.keyPair().publicKey, keys.secretKey)).toBeNull();
   });
 
   it('checks the Cloudflare token, keeps it, and writes it into repository secrets without ever returning it', async () => {

@@ -3,7 +3,7 @@
  * Shared by the editor (through its GitHub proxy) and the cloud copy (in the Durable Object), so
  * both behave the same.
  */
-import { applyCommands, type GitLink, type ProjectDoc } from '@gs/project';
+import { applyCommands, projectTextFiles, type GitLink, type ProjectDoc } from '@gs/project';
 import { GitHub, GitHubError, isValidBranchName, isValidOwnerName, isValidRepoName, type PullRequest } from './github';
 import { CHECK_WORKFLOW, WORKFLOW_TEMPLATES, cleanLogLine, parseLogProblems, runState, summarizeRun } from './actions';
 import { BUILD_BRANCH, cloudflareFiles, type BuildFile } from './deploy';
@@ -16,6 +16,11 @@ const fail = (code: string, message: string, details?: unknown): never => {
 
 const str = (params: Record<string, unknown>, k: string) => (typeof params[k] === 'string' && (params[k] as string).trim() ? (params[k] as string).trim() : undefined);
 const bool = (params: Record<string, unknown>, k: string) => (typeof params[k] === 'boolean' ? (params[k] as boolean) : undefined);
+
+/** Every repository path the project has (to link log problems to files). */
+export function projectFilesOf(doc: ProjectDoc): Set<string> {
+  return new Set([...projectTextFiles(doc).keys(), ...Object.keys(doc.assets)]);
+}
 
 export function gitStatusView(doc: ProjectDoc) {
   const link = doc.git;

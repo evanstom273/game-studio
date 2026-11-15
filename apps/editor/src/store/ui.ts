@@ -5,7 +5,7 @@ export type Tool = 'select' | 'move' | 'rotate' | 'scale';
 export type BottomTab = 'console' | 'problems' | 'mcp';
 /** Compact layout: which bottom sheet is open. */
 export type Sheet = 'scene' | 'inspector' | 'files' | 'console' | null;
-export type Dialog = 'new-scene' | 'add-node' | 'settings' | 'export' | 'mcp' | 'backups' | 'shortcuts' | null;
+export type Dialog = 'new-scene' | 'add-node' | 'settings' | 'export' | 'mcp' | 'backups' | 'shortcuts' | 'git' | 'github' | null;
 
 interface UiState {
   leftWidth: number;

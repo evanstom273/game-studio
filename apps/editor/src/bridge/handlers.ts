@@ -11,6 +11,7 @@ import { useConsole } from '@editor/store/console';
 import { usePlay, stopGame } from '@editor/play/player-host';
 import { exportArchiveFile, exportWeb, openProjectById, runScene } from '@editor/services/editor-service';
 import { confirmDialog } from '@editor/components/ui/feedback';
+import { deployOpen } from '@editor/git/deploy';
 import type { CloudSync } from './sync';
 
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
@@ -75,6 +76,10 @@ export async function handleEditorRequest(method: EditorRequest, params: Record<
     case 'export_project':
       await prepare(sync, params);
       return (str(params.format) ?? 'web') === 'archive' ? exportArchiveFile() : exportWeb();
+    case 'git_deploy':
+      // Building the web export needs a browser; the cloud asks the open editor (see cloud/git.ts).
+      await prepare(sync, params);
+      return deployOpen(params.target === 'cloudflare' ? 'cloudflare' : 'github-pages', { branch: str(params.branch), workerName: str(params.worker_name) });
     default:
       throw new GameStudioError('E_UNKNOWN_METHOD', `The editor doesn't handle "${String(method)}"`);
   }

@@ -106,7 +106,7 @@ export class GitHubVault {
 
   async client(): Promise<GitHub> {
     const t = await this.token();
-    if (!t) throw new GitHubError('E_GITHUB_NOT_CONNECTED', 'GitHub is not connected. Add a token in Game Studio → GitHub (the token stays in your own cloud storage).');
+    if (!t) throw new GitHubError('E_GITHUB_NOT_CONNECTED', 'GitHub is not connected. The user connects a token once in Game Studio → Source control (the token stays in their own cloud storage).');
     return new GitHub(githubTransport(t, this.fetchImpl));
   }
 

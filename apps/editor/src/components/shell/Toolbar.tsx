@@ -1,6 +1,6 @@
 /** Top bar: projects, project name and save state, tools, undo/redo, play controls, menu. */
 import { useState } from 'react';
-import { Archive, Bot, ChevronLeft, Download, Keyboard, MoreVertical, MousePointer2, Move, Pause, Play, PlaySquare, Redo2, RotateCw, Scaling, Settings, Square, Undo2 } from 'lucide-react';
+import { Archive, Bot, ChevronLeft, Download, FolderGit2, GitBranch, Keyboard, MoreVertical, MousePointer2, Move, Pause, Play, PlaySquare, Redo2, RotateCw, Scaling, Settings, Square, Undo2 } from 'lucide-react';
 import { navigate } from '@editor/lib/router';
 import { useEditor } from '@editor/store/editor';
 import { useUi, type Tool } from '@editor/store/ui';
@@ -107,6 +107,11 @@ export function Toolbar({ compact }: { compact: boolean }) {
       </IconButton>
       {!compact && <div className="flex-1" />}
       <PlayButtons compact={compact} />
+      {!compact && (
+        <IconButton label="Source control (GitHub)" onClick={() => set({ dialog: 'git' })} data-testid="toolbar-git">
+          <GitBranch size={15} />
+        </IconButton>
+      )}
       <IconButton label="AI connection" onClick={() => set({ dialog: 'mcp' })} data-testid="toolbar-mcp">
         <Bot size={16} className={bridge === 'connected' ? 'text-ok' : bridge === 'off' ? undefined : 'text-warn'} />
       </IconButton>
@@ -119,6 +124,8 @@ export function Toolbar({ compact }: { compact: boolean }) {
           <div className="absolute right-1.5 top-10 z-40 w-56 overflow-hidden rounded-md border border-border bg-panel-2 py-1 shadow-2xl" role="menu">
             {item(Settings, 'Project settings', () => set({ dialog: 'settings' }), 'menu-settings')}
             {item(Download, 'Export…', () => set({ dialog: 'export' }), 'menu-export')}
+            {item(GitBranch, 'Source control (GitHub)', () => set({ dialog: 'git' }), 'menu-git')}
+            {item(FolderGit2, 'GitHub repositories…', () => set({ dialog: 'github' }), 'menu-github')}
             {item(Archive, 'Backups', () => set({ dialog: 'backups' }))}
             {item(Bot, 'AI connection (MCP)', () => set({ dialog: 'mcp' }))}
             {item(Keyboard, 'Keyboard shortcuts', () => set({ dialog: 'shortcuts' }))}

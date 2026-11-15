@@ -17,7 +17,7 @@ const project = z.string().optional().describe('Project id or exact name. Omit f
 const repository = z.string().optional().describe('"owner/name": another repository instead of the project\'s');
 const ro = { readOnlyHint: true } as const;
 const destructive = { destructiveHint: true } as const;
-const NOTE = "Needs GitHub connected in Game Studio (GitHub → token; the token stays in the user's own cloud storage and is never shown).";
+const NOTE = "Needs GitHub connected in Game Studio (Source control → connect a token; the token stays in the user's own cloud storage and is never shown).";
 
 export function registerGitTools(server: McpServer, relay: Relay) {
   const tool = <S extends z.ZodRawShape>(name: GitMethod, title: string, description: string, inputSchema: S, annotations: Record<string, boolean> = {}, timeout = 120_000) =>
@@ -80,7 +80,7 @@ export function registerGitTools(server: McpServer, relay: Relay) {
     {},
     120_000,
   );
-  tool('ci_cloudflare_secrets', 'Set Cloudflare deploy secrets', "Put the Cloudflare API token and account ID saved in Game Studio into the project repository's GitHub Actions secrets (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID), sealed with the repository's key. The values are never returned. Needs Cloudflare connected once in Game Studio (GitHub → Deploy), the token's \"Secrets: Read and write\" permission and the \"full\" level.", { project }, {}, 60_000);
+  tool('ci_cloudflare_secrets', 'Set Cloudflare deploy secrets', "Put the Cloudflare API token and account ID saved in Game Studio into the project repository's GitHub Actions secrets (CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID), sealed with the repository's key. The values are never returned. Needs Cloudflare connected once in Game Studio (Source control → Deploy), the token's \"Secrets: Read and write\" permission and the \"full\" level.", { project }, {}, 60_000);
 
   // --- deploying the game ------------------------------------------------------------------------------------
   tool(
