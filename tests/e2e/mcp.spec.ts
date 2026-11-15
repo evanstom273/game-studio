@@ -113,3 +113,37 @@ test('an AI assistant builds a 3D scene with Game Studio closed, then runs it on
   expect((await call('get_scene', { scene: 'scenes/arena.scene' })).outline).toContain('Player (CharacterBody3D)');
   await client.close();
 });
+
+test('an AI builds a visual script over MCP and it runs in the player', async ({ page }) => {
+  await newProject(page, 'empty-2d', 'Visual MCP');
+  await page.getByTestId('toolbar-mcp').click();
+  await page.getByTestId('mcp-toggle').check();
+  await expect(page.getByTestId('mcp-status')).toContainText('even when Game Studio is closed');
+  await page.getByTestId('mcp-level').selectOption('full');
+  const url = (await page.getByTestId('mcp-url').textContent())!;
+  await page.keyboard.press('Escape');
+  const { client, call } = await connect(url);
+
+  await call('add_node', { type: 'Node2D', name: 'Mover', props: { position: [100, 100] } });
+  const created = await call('create_visual_script', { path: 'scripts/mover.vgraph', nodeType: 'Node2D', events: ['_ready', '_process'], attach: { node: 'Mover' } });
+  const fns = created.functions as { name: string; nodes: { id: string; type: string }[] }[];
+  const readyEntry = fns.find((f) => f.name === '_ready')!.nodes[0].id;
+  const tickEntry = fns.find((f) => f.name === '_process')!.nodes[0].id;
+  const edited = await call('edit_visual_script', {
+    path: 'scripts/mover.vgraph',
+    ops: [
+      { op: 'add_node', graph: '_ready', ref: 'hello', type: 'core.print', inputs: { value: 'hello from a graph' } },
+      { op: 'connect', graph: '_ready', from: { node: readyEntry, port: 'then' }, to: { node: '$hello', port: 'exec' } },
+      { op: 'add_node', graph: '_process', ref: 'rot', type: 'gs.node2d.rotate', inputs: { radians: 0.05 } },
+      { op: 'connect', graph: '_process', from: { node: tickEntry, port: 'then' }, to: { node: '$rot', port: 'exec' } },
+    ],
+  });
+  expect(edited.diagnostics).toEqual([]);
+  expect(edited.code).toContain('this.rotate(0.05);');
+  await expect(page.locator('[data-testid="file-row"][data-path="scripts/mover.vgraph"]')).toBeVisible();
+
+  const run = await call('run_scene', { seconds: 2 });
+  expect(run.errors).toBe(0);
+  expect(JSON.stringify(run)).toContain('hello from a graph');
+  await client.close();
+});
