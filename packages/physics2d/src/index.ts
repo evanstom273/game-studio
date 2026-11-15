@@ -266,6 +266,17 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
       result.collisions.push({ position: new Vector2(col.witness1.x * PPM, col.witness1.y * PPM), normal, collider: other as Node | null } satisfies SlideCollision<Vector2>);
     }
     if (c.computedGrounded()) result.onFloor = true;
+    // Resting on a floor moves nothing into it, so the controller reports no contact; Godot does,
+    // and scripts (and moving platforms) need to know what the character stands on.
+    // Rapier's grounded test also reaches a few pixels further than contact; a character that
+    // isn't actually touching must keep falling (the floor projection above would freeze it).
+    if (result.onFloor && !result.collisions.some((col) => col.normal.dot(up) >= cosMax - 1e-4)) {
+      const floor = this.probeFloor(rec, collider, end.sub(start), up, cosMax);
+      if (floor && floor.gap <= 2) {
+        result.collisions.push(floor.collision);
+        result.floorNormal = floor.collision.normal;
+      } else result.onFloor = false;
+    }
     // Like Godot: stop pushing into what we hit.
     let v = node.velocity.clone();
     const into = v.dot(up);
@@ -285,6 +296,21 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
     rec.body.setNextKinematicTranslation({ x: end.x / PPM, y: end.y / PPM });
     rec.lastPos = end;
     node.__setMotion(result);
+  }
+
+  /** Casts the character's shape a little way down from where it is moving to and reports the floor there. */
+  private probeFloor(rec: BodyRecord, collider: RAPIER.Collider, moved: Vector2, up: Vector2, cosMax: number): { collision: SlideCollision<Vector2>; gap: number } | null {
+    const t = collider.translation();
+    const node = rec.node as CharacterBody2D;
+    const reach = (Math.max(node.floorSnapLength, 4) + 12) / PPM;
+    const hit = this.world.castShape({ x: t.x + moved.x / PPM, y: t.y + moved.y / PPM }, collider.rotation(), { x: -up.x, y: -up.y }, collider.shape, 0, reach, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(node.collisionLayer, node.collisionMask), collider, rec.body);
+    if (!hit) return null;
+    const normal = new Vector2(hit.normal1.x, hit.normal1.y).normalized();
+    if (normal.dot(up) < cosMax - 1e-4) return null;
+    // Flat floors report a normal a hair off vertical; projecting motion on that would push into the floor.
+    const flat = normal.dot(up) > 1 - 1e-6;
+    const other = this.byCollider.get(hit.collider.handle)?.node ?? null;
+    return { collision: { position: new Vector2(hit.witness1.x * PPM, hit.witness1.y * PPM), normal: flat ? up.clone() : normal, collider: other as Node | null }, gap: hit.time_of_impact * PPM };
   }
 
   /** The AnimatableBody2D a grounded character stood on in its last move, if any. */
