@@ -27,7 +27,11 @@ export async function saveNow(): Promise<void> {
   timer = null;
   if (inFlight) await inFlight;
   const { project, saved } = useEditor.getState();
-  if (!project || project === saved) return;
+  if (!project || project === saved) {
+    // Undo then redo back to the stored snapshot before the timer fired: nothing to write.
+    if (project && useSaveStatus.getState().state === 'pending') useSaveStatus.setState({ state: 'saved' });
+    return;
+  }
   useSaveStatus.setState({ state: 'saving' });
   inFlight = (async () => {
     try {

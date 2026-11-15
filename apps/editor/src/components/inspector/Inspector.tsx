@@ -1,20 +1,39 @@
 /**
  * The inspector: the selected node's properties (generated from the registry's metadata), its
- * script and the script's exported properties, groups and signal connections.
+ * script and the script's exported properties, groups and signal connections. While a visual
+ * script is open it inspects the graph instead (components/visual/GraphInspector).
  */
-import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink, FileCode2, Link2, Plus, RotateCcw, Unlink, X } from 'lucide-react';
+import { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, ExternalLink, FileCode2, Link2, Plus, RotateCcw, Unlink, Workflow, X } from 'lucide-react';
 import { errorMessage, jsonEqual, type Json } from '@gs/shared';
 import { findDocNode, nodeTypes, type NodeDoc, type PropDef, type ScriptInfo, type SceneDoc } from '@gs/core';
 import { scriptTemplate } from '@gs/scripting';
+import { ENGINE_EXPORTS, classNameFor, isVisualScriptPath, newVisualScript, serializeVisualScript } from '@gs/visual';
 import { useEditor, activeScenePath } from '@editor/store/editor';
+import { useUi } from '@editor/store/ui';
+import { useLayout } from '@editor/lib/layout';
 import { toast } from '@editor/store/toasts';
 import { describeScripts } from '@editor/play/player-host';
 import { Button, EmptyState, IconButton, SectionHeader, Select, TextInput, cx, inputCls } from '../ui/primitives';
 import { NodeIcon } from '../ui/NodeIcon';
 import { PropField, Row, prettyName } from './fields';
 
+const GraphInspector = lazy(() => import('../visual/GraphInspector'));
+
 export function Inspector() {
+  const visualPath = useEditor((s) => (s.active?.kind === 'script' && isVisualScriptPath(s.active.path) ? s.active.path : null));
+  if (visualPath)
+    return (
+      <Shell>
+        <Suspense fallback={<div className="p-3 text-[12px] text-muted">Loading…</div>}>
+          <GraphInspector key={visualPath} path={visualPath} />
+        </Suspense>
+      </Shell>
+    );
+  return <SceneInspector />;
+}
+
+function SceneInspector() {
   const scenePath = useEditor(activeScenePath);
   const scene = useEditor((s) => (scenePath ? s.project?.scenes[scenePath] : undefined));
   const selection = useEditor((s) => s.selection);
@@ -174,13 +193,35 @@ function ScriptSection({ scenePath, node }: { scenePath: string; node: NodeDoc }
     );
     useEditor.getState().openDoc({ kind: 'script', path: p });
   };
+  const compact = useLayout().mode === 'compact';
+  /** A visual script for this node: scripts/<node>.vgraph, extending the node's type, opened in the graph editor. */
+  const attachNewVisual = () => {
+    const base = (node.name.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'script').replace(/^\d+/, '') || 'script';
+    const stem = base.charAt(0).toLowerCase() + base.slice(1);
+    const free = (p: string) => scripts[p] === undefined && !ENGINE_EXPORTS.has(classNameFor(p));
+    let p = `scripts/${stem}.vgraph`;
+    if (!free(p)) p = `scripts/${stem}_script.vgraph`;
+    for (let i = 2; !free(p); i++) p = `scripts/${stem}_script${i}.vgraph`;
+    dispatch(
+      [
+        { op: 'write_script', path: p, source: serializeVisualScript(newVisualScript(classNameFor(p), node.type)) },
+        { op: 'attach_script', scene: scenePath, node: node.id, script: p },
+      ],
+      'New visual script',
+    );
+    if (useEditor.getState().project?.scripts[p] === undefined) return;
+    useEditor.getState().openDoc({ kind: 'script', path: p });
+    // Phones: show the graph, not the sheet this was started from.
+    if (compact) useUi.getState().set({ sheet: null });
+  };
   const described = path ? info?.[path] : undefined;
+  const visual = !!path && isVisualScriptPath(path);
   return (
     <Section title="Script">
       {path ? (
         <>
           <div className="flex items-center gap-1.5 py-1">
-            <FileCode2 size={14} className="shrink-0 text-node-audio" />
+            {visual ? <Workflow size={14} className="shrink-0 text-node-physics" /> : <FileCode2 size={14} className="shrink-0 text-node-audio" />}
             <button className="min-w-0 flex-1 truncate text-left text-[12px] text-accent hover:underline" onClick={() => useEditor.getState().openDoc({ kind: 'script', path })} data-testid="open-script">
               {path}
             </button>
@@ -202,8 +243,11 @@ function ScriptSection({ scenePath, node }: { scenePath: string; node: NodeDoc }
         </>
       ) : (
         <div className="flex flex-wrap items-center gap-1.5 py-1">
-          <Button onClick={attachNew} data-testid="new-script">
-            <Plus size={13} /> New script
+          <Button variant="primary" onClick={attachNewVisual} data-testid="new-visual-script" title="A script made of connected blocks (a graph), for this node">
+            <Workflow size={13} /> New visual script
+          </Button>
+          <Button onClick={attachNew} data-testid="new-script" title="A TypeScript script for this node">
+            <Plus size={13} /> New code script
           </Button>
           {Object.keys(scripts).length > 0 && (
             <Select value="" onChange={(e) => e.target.value && dispatch([{ op: 'attach_script', scene: scenePath, node: node.id, script: e.target.value }], 'Attach script')} className="w-auto flex-1" aria-label="Attach existing script">

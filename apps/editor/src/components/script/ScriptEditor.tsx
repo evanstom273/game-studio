@@ -11,11 +11,10 @@ import { EditorState, type Extension } from '@codemirror/state';
 import { EditorView, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, drawSelection } from '@codemirror/view';
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
-import { bracketMatching, indentOnInput, syntaxHighlighting, HighlightStyle, foldGutter } from '@codemirror/language';
+import { bracketMatching, indentOnInput, syntaxHighlighting, foldGutter } from '@codemirror/language';
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete';
 import { linter, lintGutter, setDiagnostics, type Diagnostic as CmDiagnostic } from '@codemirror/lint';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
-import { tags as t } from '@lezer/highlight';
 import { AlertTriangle, CheckCircle2, XCircle } from 'lucide-react';
 import { nodeTypes } from '@gs/core';
 import { API_COMPLETIONS, type ApiEntry } from '@gs/scripting';
@@ -26,35 +25,7 @@ import { checkScriptSource, compileProjectScripts } from '@editor/scripting/comp
 import { useConsole } from '@editor/store/console';
 import { toast } from '@editor/store/toasts';
 import { errorMessage } from '@gs/shared';
-
-const theme = EditorView.theme(
-  {
-    '&': { color: '#e3e6ec', backgroundColor: '#11141a' },
-    '.cm-content': { caretColor: '#4f8cff', paddingBottom: '40vh' },
-    '.cm-cursor': { borderLeftColor: '#4f8cff' },
-    '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': { backgroundColor: 'rgba(79,140,255,0.28) !important' },
-    '.cm-gutters': { backgroundColor: '#11141a', color: '#5b6372', border: 'none' },
-    '.cm-activeLine': { backgroundColor: 'rgba(255,255,255,0.03)' },
-    '.cm-activeLineGutter': { backgroundColor: 'transparent', color: '#8b93a4' },
-    '.cm-tooltip': { backgroundColor: '#1c212b', border: '1px solid #2a303c', color: '#e3e6ec' },
-    '.cm-tooltip-autocomplete ul li[aria-selected]': { backgroundColor: 'rgba(79,140,255,0.3)' },
-    '.cm-completionDetail': { color: '#8b93a4', fontStyle: 'normal', marginLeft: '8px' },
-    '.cm-panels': { backgroundColor: '#161a22', color: '#e3e6ec' },
-  },
-  { dark: true },
-);
-
-const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.modifier, t.operatorKeyword], color: '#c792ea' },
-  { tag: [t.typeName, t.className], color: '#ffcb6b' },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: '#82aaff' },
-  { tag: [t.string, t.special(t.string)], color: '#c3e88d' },
-  { tag: [t.number, t.bool, t.null], color: '#f78c6c' },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: '#5f6b80', fontStyle: 'italic' },
-  { tag: [t.propertyName], color: '#b2ccd6' },
-  { tag: [t.definition(t.variableName)], color: '#e3e6ec' },
-  { tag: [t.operator, t.punctuation], color: '#89ddff' },
-]);
+import { editorHighlight, editorTheme } from './cm-theme';
 
 /** Engine-aware completions: globals, imports, and members after `this.` / `Input.` / known classes. */
 function engineCompletions(ctx: CompletionContext): CompletionResult | null {
@@ -140,13 +111,13 @@ export default function ScriptEditor({ path }: { path: string }) {
       closeBrackets(),
       highlightSelectionMatches(),
       javascript({ typescript: path.endsWith('.ts') }),
-      syntaxHighlighting(highlight),
+      syntaxHighlighting(editorHighlight),
       autocompletion({ override: [engineCompletions], activateOnTyping: true }),
       lint,
       lintGutter(),
       keymap.of([...closeBracketsKeymap, ...defaultKeymap, ...searchKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
       EditorView.lineWrapping,
-      theme,
+      editorTheme,
       EditorView.updateListener.of((u) => {
         if (!u.docChanged || u.transactions.some((tr) => tr.isUserEvent('gs.external'))) return;
         if (pushTimer) clearTimeout(pushTimer);
