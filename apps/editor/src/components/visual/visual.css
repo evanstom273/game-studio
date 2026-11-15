@@ -60,9 +60,9 @@
 /* Touch screens: bigger pins, rows and inline fields so fingers can hit them. */
 @media (pointer: coarse) {
   .gs-graph .react-flow {
-    --pin-size: 18px;
-    --pin-exec-w: 17px;
-    --pin-exec-h: 20px;
+    --pin-size: 20px;
+    --pin-exec-w: 19px;
+    --pin-exec-h: 22px;
   }
   /* An invisible margin around each pin makes it easier to grab without making it look bigger. */
   .gs-graph .bp-pin::after {
