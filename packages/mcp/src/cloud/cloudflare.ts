@@ -108,7 +108,7 @@ export class CloudflareVault {
   /** Writes CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID into a repository's Actions secrets (sealed). */
   async setRepoSecrets(gh: GitHub, owner: string, repo: string) {
     const v = await this.kv.get<Stored>(KEY);
-    if (!v) throw new GitHubError('E_CLOUDFLARE_NOT_CONNECTED', 'Cloudflare is not connected yet: add your Cloudflare API token and account ID in Game Studio → GitHub → Deploy (once, for all projects).');
+    if (!v) throw new GitHubError('E_CLOUDFLARE_NOT_CONNECTED', 'Cloudflare is not connected yet: add your Cloudflare API token and account ID in Game Studio → Source control → Deploy (once, for all projects).');
     const pk = await gh.actionsPublicKey(owner, repo);
     const key = unb64(pk.key);
     const enc = new TextEncoder();

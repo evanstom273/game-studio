@@ -28,7 +28,7 @@ export async function deployOpen(target: DeployTarget, opts: { branch?: string; 
   const project = useEditor.getState().project;
   if (!project) throw new GameStudioError('E_NO_PROJECT', 'No project is open');
   const link = project.git;
-  if (!link) throw new GameStudioError('E_NOT_LINKED', 'Publish this project to a GitHub repository first (GitHub → Publish).');
+  if (!link) throw new GameStudioError('E_NOT_LINKED', 'Publish this project to a GitHub repository first (Source control → Publish).');
   const branch = opts.branch?.trim() || BUILD_BRANCH;
   if (branch === link.branch) throw new GameStudioError('E_INVALID', `The web build needs its own branch, not "${branch}" (the project's).`);
   const progress = opts.onProgress ?? (() => {});

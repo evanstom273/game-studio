@@ -89,12 +89,13 @@ function PublishForm({ login, defaultName }: { login: string; defaultName: strin
   );
 }
 
-const TABS: [Tab, string][] = [
-  ['changes', 'Changes'],
-  ['pulls', 'Pull requests'],
-  ['actions', 'Actions'],
-  ['deploy', 'Deploy'],
-  ['repo', 'Repository'],
+/** id, label, shorter label for phones */
+const TABS: [Tab, string, string][] = [
+  ['changes', 'Changes', 'Changes'],
+  ['pulls', 'Pull requests', 'PRs'],
+  ['actions', 'Actions', 'Actions'],
+  ['deploy', 'Deploy', 'Deploy'],
+  ['repo', 'Repository', 'Repo'],
 ];
 
 function Linked({ link, login }: { link: GitLink; login: string }) {
@@ -174,6 +175,9 @@ function Linked({ link, login }: { link: GitLink; login: string }) {
           <Button variant="ghost" disabled={!!busy} onClick={() => void doPull()} data-testid="git-pull" title="Bring in new commits from GitHub">
             <RefreshCw size={12} className={busy === 'pull' ? 'animate-spin' : undefined} /> Pull
           </Button>
+          <Button variant="ghost" disabled={!!busy} onClick={() => void useGitHubAuth.getState().disconnect()} title={`Connected as ${login}. Forget this token and connect another one.`} data-testid="git-change-token">
+            Change token
+          </Button>
           <a className="touch-target inline-flex items-center justify-center rounded px-1.5 text-muted hover:text-text" href={`https://github.com/${repoKey}/tree/${encodeURIComponent(link.branch)}`} target="_blank" rel="noreferrer" aria-label="Open on GitHub" title={`Connected as ${login}. Open on GitHub`}>
             <ExternalLink size={13} />
           </a>
@@ -202,9 +206,16 @@ function Linked({ link, login }: { link: GitLink; login: string }) {
         )}
       </div>
       <div className="flex shrink-0 overflow-x-auto border-b border-border" role="tablist">
-        {TABS.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} onClick={() => setTab(id)} className={cx('touch-target shrink-0 grow border-b-2 px-3 py-1.5 text-[12px] font-medium', tab === id ? 'border-accent text-text' : 'border-transparent text-muted hover:text-text')} data-testid={`git-view-${id}`}>
-            {id === 'changes' ? `${label} (${changes})` : label}
+        {TABS.map(([id, label, short]) => (
+          <button key={id} role="tab" aria-selected={tab === id} aria-label={id === 'changes' ? undefined : label} onClick={() => setTab(id)} className={cx('touch-target shrink-0 grow border-b-2 px-2 py-1.5 text-[12px] font-medium sm:px-3', tab === id ? 'border-accent text-text' : 'border-transparent text-muted hover:text-text')} data-testid={`git-view-${id}`}>
+            {id === 'changes' ? (
+              `${label} (${changes})`
+            ) : (
+              <>
+                <span className="sm:hidden">{short}</span>
+                <span className="hidden sm:inline">{label}</span>
+              </>
+            )}
           </button>
         ))}
       </div>

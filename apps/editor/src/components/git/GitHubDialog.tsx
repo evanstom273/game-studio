@@ -72,7 +72,7 @@ export function GitHubDialog({ onClose, onOpened }: { onClose: () => void; onOpe
               </Button>
             </div>
             {!repos && <div className="text-muted">Loading repositories…</div>}
-            {repos?.length === 0 && <div className="py-2 text-muted">No repositories yet. Create one, or publish a project from the editor (GitHub → Publish).</div>}
+            {repos?.length === 0 && <div className="py-2 text-muted">No repositories yet. Create one, or publish a project from the editor (Source control → Publish).</div>}
             <ul className="max-h-[50dvh] overflow-auto">
               {shown.map((r) => (
                 <li key={r.full_name} className="gs-row flex items-center rounded hover:bg-panel-2">
@@ -138,7 +138,7 @@ function OpenRepo({ repo, onOpened }: { repo: RepoInfo; onOpened: (projectId: st
   return (
     <div className="space-y-2 px-4 py-3 text-[12px]">
       {empty ? (
-        <p className="text-muted">This repository is empty. Publish a project to a new repository from the editor instead (GitHub → Publish), or add a first commit on GitHub.</p>
+        <p className="text-muted">This repository is empty. Publish a project to a new repository from the editor instead (Source control → Publish), or add a first commit on GitHub.</p>
       ) : (
         <>
           <Field label="Branch">
@@ -192,7 +192,7 @@ function NewRepo({ onCreated }: { onCreated: (r: RepoInfo) => void }) {
       <label className="mb-3 flex items-center gap-2">
         <input type="checkbox" className="accent-[var(--color-accent)]" checked={isPrivate} onChange={(e) => setPrivate(e.target.checked)} /> Private
       </label>
-      <p className={cx('mb-2 text-muted')}>To put the project you're editing into a new repository, use GitHub → Publish in the editor: it creates the repository and pushes every file.</p>
+      <p className={cx('mb-2 text-muted')}>To put the project you're editing into a new repository, use Source control in the editor: it creates the repository and pushes every file.</p>
       <Button type="submit" variant="primary" className="w-full" disabled={!valid || busy} data-testid="repo-new-create">
         {busy ? 'Creating…' : 'Create repository'}
       </Button>

@@ -112,12 +112,12 @@ export class GitHub {
     if (ok.includes(r.status)) return r.body as T;
     const msg = (r.body as { message?: string } | null)?.message ?? `HTTP ${r.status}`;
     const where = path.split('?')[0];
-    if (r.status === 401) throw new GitHubError('E_GITHUB_AUTH', 'GitHub rejected the token (expired or revoked?). Paste a new one in Game Studio → GitHub → Change token.', 401);
+    if (r.status === 401) throw new GitHubError('E_GITHUB_AUTH', 'GitHub rejected the token (expired or revoked?). Connect a new one in Game Studio → Source control → Change token.', 401);
     if (r.status === 403 && /rate limit/i.test(msg)) throw new GitHubError('E_GITHUB_RATE_LIMIT', `GitHub rate limit: ${msg}`, 403);
     if ((r.status === 403 || r.status === 404) && /\/actions\/secrets/.test(path)) throw new GitHubError('E_GITHUB_PERMISSION', `The GitHub token can't set repository secrets. Give it "Secrets: Read and write" (GitHub → Settings → Developer settings → your token), then try again. GitHub said: ${msg}`, r.status);
-    if ((r.status === 403 || r.status === 404 || r.status === 422) && /workflow/i.test(msg)) throw new GitHubError('E_GITHUB_PERMISSION', `The token works, but it isn't allowed to change GitHub Actions workflow files (.github/workflows). Give it "Workflows: Read and write", or paste a new token in Game Studio → GitHub. GitHub said: ${msg}`, r.status);
+    if ((r.status === 403 || r.status === 404 || r.status === 422) && /workflow/i.test(msg)) throw new GitHubError('E_GITHUB_PERMISSION', `The token works, but it isn't allowed to change GitHub Actions workflow files (.github/workflows). Give it "Workflows: Read and write", or connect a new token in Game Studio → Source control → Change token. GitHub said: ${msg}`, r.status);
     if (r.status === 403 && /\/pages/.test(where)) throw new GitHubError('E_GITHUB_PERMISSION', `The token can't manage GitHub Pages for this repository. Give it "Pages: Read and write". GitHub said: ${msg}`, 403);
-    if (r.status === 403) throw new GitHubError('E_GITHUB_PERMISSION', `The token works, but it doesn't have permission for this (${where}). Check its repository access and permissions on GitHub, or paste a new token in Game Studio → GitHub. GitHub said: ${msg}`, 403);
+    if (r.status === 403) throw new GitHubError('E_GITHUB_PERMISSION', `The token works, but it doesn't have permission for this (${where}). Check its repository access and permissions on GitHub, or connect a new token in Game Studio → Source control → Change token. GitHub said: ${msg}`, 403);
     if (r.status === 404) throw new GitHubError('E_NOT_FOUND', `Not found on GitHub (${where}). Check the name, and that the token can access this repository.`, 404);
     if (r.status === 409 || r.status === 422 || r.status === 405) throw new GitHubError('E_GITHUB_REJECTED', `GitHub refused: ${msg}`, r.status);
     throw new GitHubError('E_GITHUB', `GitHub error ${r.status}: ${msg}`, r.status);

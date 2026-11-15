@@ -35,7 +35,7 @@ const proxy: Fetch = async (path, init = {}) => {
     throw new GitHubError('E_OFFLINE', "Can't reach GitHub (offline?). Your project is safe in this browser; try again when you're online.");
   }
   const body = await parse(res);
-  if (res.status === 401 && (body as { code?: string } | null)?.code === 'E_GITHUB_NOT_CONNECTED') throw new GitHubError('E_GITHUB_NOT_CONNECTED', 'GitHub is not connected. Add a token in GitHub → Connect.');
+  if (res.status === 401 && (body as { code?: string } | null)?.code === 'E_GITHUB_NOT_CONNECTED') throw new GitHubError('E_GITHUB_NOT_CONNECTED', 'GitHub is not connected. Connect a token in Source control.');
   return { status: res.status, body };
 };
 

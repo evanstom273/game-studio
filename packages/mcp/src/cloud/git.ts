@@ -276,7 +276,7 @@ export class CloudGit {
         const target = params.target === 'cloudflare' ? 'cloudflare' : params.target === 'github-pages' ? 'github-pages' : null;
         if (!target) throw new GameStudioError('E_INVALID', 'target must be "github-pages" or "cloudflare"');
         await this.github().client(); // fail early when GitHub isn't connected
-        if (target === 'cloudflare' && !(await this.cloudflare().status()).configured) throw new GameStudioError('E_CLOUDFLARE_NOT_CONNECTED', 'Cloudflare is not connected yet: the user adds a Cloudflare API token and account ID once, in Game Studio → GitHub → Deploy.');
+        if (target === 'cloudflare' && !(await this.cloudflare().status()).configured) throw new GameStudioError('E_CLOUDFLARE_NOT_CONNECTED', 'Cloudflare is not connected yet: the user adds a Cloudflare API token and account ID once, in Game Studio → Source control → Deploy.');
         if (!this.ctx.editor.connected())
           throw new GameStudioError('E_NO_EDITOR', `Deploying builds the game's web export, which happens in Game Studio in a browser (it compiles the scripts and packs the engine). Ask the user to open Game Studio on any device, then try again. ${link.owner}/${link.repo} was not changed.`);
         return this.ctx.editor.ask('git_deploy', { project: doc.id, revision: projectRevision(doc), target, ...(str(params.branch) ? { branch: str(params.branch) } : {}), ...(str(params.worker_name) ? { worker_name: str(params.worker_name) } : {}) }, 600_000);
