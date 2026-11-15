@@ -1,0 +1,40 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "noUncheckedIndexedAccess": false,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": true,
+    "useDefineForClassFields": true,
+    "types": ["node", "vite/client"],
+    "baseUrl": ".",
+    "paths": {
+      "@gs/shared": ["packages/shared/src/index.ts"],
+      "@gs/core": ["packages/core/src/index.ts"],
+      "@gs/render2d": ["packages/render2d/src/index.ts"],
+      "@gs/render3d": ["packages/render3d/src/index.ts"],
+      "@gs/physics2d": ["packages/physics2d/src/index.ts"],
+      "@gs/physics3d": ["packages/physics3d/src/index.ts"],
+      "@gs/audio": ["packages/audio/src/index.ts"],
+      "@gs/project": ["packages/project/src/index.ts"],
+      "@gs/scripting": ["packages/scripting/src/index.ts"],
+      "@gs/player": ["packages/player/src/index.ts"],
+      "@gs/exporter": ["packages/exporter/src/index.ts"],
+      "@gs/mcp": ["packages/mcp/src/index.ts"],
+      "@editor/*": ["apps/editor/src/*"]
+    }
+  },
+  "include": ["packages", "apps/editor/src", "apps/editor/vite.config.ts", "apps/editor/plugins", "tests", "scripts", "vitest.config.ts", "playwright.config.ts", "aliases.ts"],
+  "exclude": ["node_modules", "dist", "apps/editor/dist"]
+}
