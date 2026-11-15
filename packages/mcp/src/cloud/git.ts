@@ -6,7 +6,7 @@
  * editors are told about them like any other cloud edit.
  */
 import { GameStudioError, errorMessage, newId } from '@gs/shared';
-import { applyCommands, projectRevision, projectTextFiles, type ProjectDoc } from '@gs/project';
+import { applyCommands, projectRevision, type ProjectDoc } from '@gs/project';
 import {
   GitHubError,
   addWorkflow,
@@ -20,6 +20,7 @@ import {
   gitStatusView,
   publishProject,
   pull,
+  projectFilesOf,
   pullView,
   requireLinkOf,
   status,
@@ -238,7 +239,7 @@ export class CloudGit {
       case 'ci_rerun': {
         const doc = await this.ctx.project(projectRef);
         const link = requireLinkOf(doc);
-        const files = new Set([...projectTextFiles(doc).keys(), ...Object.keys(doc.assets)]);
+        const files = projectFilesOf(doc);
         return ciCall(method, await this.gh(), link, params, (p) => files.has(p));
       }
 

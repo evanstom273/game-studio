@@ -80,6 +80,11 @@ export async function importProjectArchive(bytes: Uint8Array) {
   return { doc, issues };
 }
 
+/** Stores a project made elsewhere (opened from GitHub) as a new project in this browser. */
+export async function addProject(doc: ProjectDoc, blobs: Map<string, Uint8Array>) {
+  return storeNew({ ...doc, updatedAt: Date.now() }, blobs);
+}
+
 export async function exportProjectArchive(doc: ProjectDoc) {
   return exportArchive(doc, (hash) => getBlob(doc.id, hash));
 }

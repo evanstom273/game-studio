@@ -4,8 +4,6 @@
  * values never go to the browser or into any response: GitHub secrets are sealed here with the
  * repository's public key (libsodium's sealed box, which is what GitHub expects).
  */
-import nacl from 'tweetnacl';
-import { blake2b } from 'blakejs';
 import { GitHubError, type GitHub } from '@gs/git';
 import type { KvStore } from './store.ts';
 import type { FetchLike } from './github-vault.ts';
@@ -15,8 +13,18 @@ const CF_API = 'https://api.cloudflare.com/client/v4';
 
 export const SECRET_NAMES = { token: 'CLOUDFLARE_API_TOKEN', account: 'CLOUDFLARE_ACCOUNT_ID' } as const;
 
+/**
+ * The crypto libraries are loaded on first use: this module is reachable from the editor's bundle
+ * through @gs/mcp's index, and only the server ever seals anything.
+ */
+async function loadCrypto() {
+  const [{ default: nacl }, { blake2b }] = await Promise.all([import('tweetnacl'), import('blakejs')]);
+  return { nacl, blake2b };
+}
+
 /** crypto_box_seal: an ephemeral key pair, nonce = blake2b(ephemeral pk ‖ recipient pk), XSalsa20-Poly1305. */
-export function sealedBox(message: Uint8Array, recipient: Uint8Array): Uint8Array {
+export async function sealedBox(message: Uint8Array, recipient: Uint8Array): Promise<Uint8Array> {
+  const { nacl, blake2b } = await loadCrypto();
   if (recipient.length !== nacl.box.publicKeyLength) throw new GitHubError('E_GITHUB', 'The repository public key has the wrong length');
   const eph = nacl.box.keyPair();
   const nonceIn = new Uint8Array(64);
@@ -31,7 +39,8 @@ export function sealedBox(message: Uint8Array, recipient: Uint8Array): Uint8Arra
 }
 
 /** crypto_box_seal_open (for tests, and what GitHub does on its side). */
-export function openSealedBox(sealed: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array): Uint8Array | null {
+export async function openSealedBox(sealed: Uint8Array, publicKey: Uint8Array, secretKey: Uint8Array): Promise<Uint8Array | null> {
+  const { nacl, blake2b } = await loadCrypto();
   const eph = sealed.subarray(0, 32);
   const nonceIn = new Uint8Array(64);
   nonceIn.set(eph, 0);
@@ -107,7 +116,7 @@ export class CloudflareVault {
       [SECRET_NAMES.token, v.token],
       [SECRET_NAMES.account, v.accountId],
     ] as const)
-      await gh.putActionsSecret(owner, repo, name, b64(sealedBox(enc.encode(value), key)), pk.key_id);
+      await gh.putActionsSecret(owner, repo, name, b64(await sealedBox(enc.encode(value), key)), pk.key_id);
     const subdomain = await this.workersSubdomain().catch(() => null);
     return { repository: `${owner}/${repo}`, secrets: [SECRET_NAMES.token, SECRET_NAMES.account], ...(subdomain ? { workers_subdomain: subdomain } : {}) };
   }

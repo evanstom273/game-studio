@@ -1,6 +1,6 @@
 /** The project manager: create, open, import, duplicate, rename, export and delete projects. */
 import { useCallback, useEffect, useState } from 'react';
-import { Bot, Box, Copy, Download, FolderOpen, Gamepad2, MoreHorizontal, Pencil, Plus, Shapes, Trash2, Upload } from 'lucide-react';
+import { Bot, Box, Copy, Download, FolderGit2, FolderOpen, Gamepad2, MoreHorizontal, Pencil, Plus, Shapes, Trash2, Upload } from 'lucide-react';
 import { TEMPLATES, type TemplateId } from '@gs/project';
 import { deleteProject, duplicateProject, exportProjectArchive, importProjectArchive, listProjects, loadProject, renameStoredProject, type ProjectListItem } from '@editor/db/projects';
 import { storageEstimate } from '@editor/db/db';
@@ -12,6 +12,7 @@ import { createAndOpenProject } from '@editor/services/editor-service';
 import { Button, Dialog, Field, IconButton, TextInput, cx, formatBytes } from '../ui/primitives';
 import { confirmDialog } from '../ui/feedback';
 import { McpDialog } from '../dialogs/McpDialog';
+import { GitHubDialog } from '../git/GitHubDialog';
 
 function ago(t: number) {
   const s = Math.round((Date.now() - t) / 1000);
@@ -32,6 +33,7 @@ export function Dashboard() {
   const [projects, setProjects] = useState<ProjectListItem[] | null>(null);
   const [creating, setCreating] = useState(false);
   const [mcpOpen, setMcpOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(false);
   const [usage, setUsage] = useState<{ usage: number; quota: number } | null>(null);
   const bridge = useBridge((s) => s.status);
   const refresh = useCallback(() => {
@@ -78,6 +80,9 @@ export function Dashboard() {
             <Button onClick={importArchive} data-testid="import-project">
               <Upload size={14} /> Import .gsproj
             </Button>
+            <Button onClick={() => setGithubOpen(true)} data-testid="open-github">
+              <FolderGit2 size={14} /> Open from GitHub
+            </Button>
             <span className="ml-1 text-[12px] text-muted">
               {bridge === 'off' ? 'Projects are stored in this browser' : 'Projects are stored in this browser and synced with your AI connection'}{usage ? ` · ${formatBytes(usage.usage)} used` : ''}. Export a .gsproj to move one to another device.
             </span>
@@ -105,6 +110,7 @@ export function Dashboard() {
       </main>
       {creating && <NewProjectDialog onClose={() => setCreating(false)} />}
       {mcpOpen && <McpDialog onClose={() => setMcpOpen(false)} />}
+      {githubOpen && <GitHubDialog onClose={() => setGithubOpen(false)} />}
     </div>
   );
 }
