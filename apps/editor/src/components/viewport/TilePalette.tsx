@@ -58,7 +58,7 @@ export function TilePalette() {
   }, [node, assets]);
   if (!node) return null;
   return (
-    <div className="pointer-events-auto absolute bottom-2 left-2 z-10 flex max-h-[45%] max-w-[min(420px,calc(100%-16px))] flex-col gap-1 rounded-lg border border-border bg-panel/95 p-1.5 shadow-xl backdrop-blur" data-testid="tile-palette">
+    <div className="pointer-events-auto absolute bottom-2 left-2 z-10 flex max-h-[45%] max-w-[min(420px,calc(100%-16px))] flex-col gap-1 rounded-lg border border-border bg-panel/95 p-1.5 shadow-xl backdrop-blur" data-testid="tile-palette" data-viewport-ui>
       <div className="flex items-center gap-1">
         <IconButton label="Paint tiles (drag in the viewport)" active={tool.painting && !tool.erase} onClick={() => tool.set({ painting: !(tool.painting && !tool.erase), erase: false })} data-testid="tile-paint">
           <Brush size={14} />

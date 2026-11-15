@@ -292,7 +292,10 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
     };
 
     // --- pointer handling ----------------------------------------------------------------------------------
+    /** Overlay UI inside the viewport (the tile palette) handles its own pointer events. */
+    const fromOverlay = (e: Event) => !!(e.target as Element | null)?.closest?.('[data-viewport-ui]');
     const onDown = (e: PointerEvent) => {
+      if (fromOverlay(e)) return;
       el.setPointerCapture(e.pointerId);
       const p = local(e);
       pointers.set(e.pointerId, p);
@@ -390,6 +393,7 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       drag = null;
     };
     const onWheel = (e: WheelEvent) => {
+      if (fromOverlay(e)) return;
       e.preventDefault();
       const p = local(e);
       if (e.ctrlKey || Math.abs(e.deltaY) >= Math.abs(e.deltaX)) {

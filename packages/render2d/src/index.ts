@@ -533,46 +533,53 @@ export class Renderer2D implements RenderServer {
     const ambient = this.modulate?.color ?? null;
     const darkens = !!ambient && !(ambient.r >= 1 && ambient.g >= 1 && ambient.b >= 1);
     this.lightSprite.visible = false;
-    for (const old of this.glow.removeChildren()) old.destroy();
     // A transparent canvas sits over the 3D view: an opaque light map would hide it.
     if (darkens && !this.opts.transparent) {
       const res = this.renderer.resolution;
       if (!this.lightTarget) this.lightTarget = RenderTexture.create({ width: this.cssWidth, height: this.cssHeight, resolution: res });
       else if (this.lightTarget.width !== this.cssWidth || this.lightTarget.height !== this.cssHeight) this.lightTarget.resize(this.cssWidth, this.cssHeight, res);
-      const layer = (this.lightLayer ??= new Container());
-      for (const old of layer.removeChildren()) old.destroy();
-      layer.addChild(new Graphics().rect(0, 0, this.cssWidth, this.cssHeight).fill({ color: ambient!.toNumber() }));
-      for (const l of this.lights) for (const s of this.lightSprites(l.light, l.transform, 1)) layer.addChild(s);
-      this.renderer.render({ container: layer, target: this.lightTarget, clear: true });
+      if (!this.lightLayer) {
+        this.lightLayer = new Container();
+        this.lightLayer.addChild(new Graphics(), new Container());
+      }
+      const [ambientRect, lights] = this.lightLayer.children as [Graphics, Container];
+      ambientRect.clear().rect(0, 0, this.cssWidth, this.cssHeight).fill({ color: ambient!.toNumber() });
+      this.placeLights(lights, 1);
+      this.placeLights(this.glow, 0);
+      this.renderer.render({ container: this.lightLayer, target: this.lightTarget, clear: true });
       this.lightSprite.texture = this.lightTarget;
       this.lightSprite.position.set(0, 0);
       this.lightSprite.visible = true;
-    } else {
-      for (const l of this.lights) for (const s of this.lightSprites(l.light, l.transform, 0.35)) this.glow.addChild(s);
-    }
+    } else this.placeLights(this.glow, 0.35);
   }
 
-  /** Additive sprites for one light (more than one when energy > 1). */
-  private lightSprites(light: PointLight2D, t: Transform2D, strength: number): Sprite[] {
-    const path = light.texture?.resourcePath ?? null;
-    const tex = (path ? this.plainTexture(path) : null) ?? this.softLight();
-    const out: Sprite[] = [];
-    // The texture is scaled so its larger side spans the light's diameter.
-    const k = (light.radius * 2) / Math.max(1, tex.width, tex.height);
-    const m = t.multiply(new Transform2D(k, 0, 0, k, 0, 0));
-    let energy = light.energy * strength;
-    while (energy > 0.001 && out.length < 4) {
-      const s = new Sprite(tex);
-      s.anchor.set(0.5);
-      s.blendMode = 'add';
-      s.tint = light.color.toNumber();
-      s.alpha = Math.min(1, energy) * light.color.a;
+  /** Fills `into` with additive light sprites (reused between frames; several per light when energy > 1). */
+  private placeLights(into: Container, strength: number) {
+    let used = 0;
+    for (const { light, transform } of strength > 0 ? this.lights : []) {
+      const path = light.texture?.resourcePath ?? null;
+      const tex = (path ? this.plainTexture(path) : null) ?? this.softLight();
+      // The texture is scaled so its larger side spans the light's diameter.
+      const k = (light.radius * 2) / Math.max(1, tex.width, tex.height);
+      const m = transform.multiply(new Transform2D(k, 0, 0, k, 0, 0));
       this.matrix.set(m.a, m.b, m.c, m.d, m.tx, m.ty);
-      s.setFromMatrix(this.matrix);
-      out.push(s);
-      energy -= 1;
+      for (let energy = light.energy * strength, n = 0; energy > 0.001 && n < 4; energy -= 1, n++) {
+        let s = into.children[used] as Sprite | undefined;
+        if (!s) {
+          s = new Sprite(tex);
+          s.anchor.set(0.5);
+          s.blendMode = 'add';
+          into.addChild(s);
+        }
+        used++;
+        if (s.texture !== tex) s.texture = tex;
+        s.visible = true;
+        s.tint = light.color.toNumber();
+        s.alpha = Math.min(1, energy) * light.color.a;
+        s.setFromMatrix(this.matrix);
+      }
     }
-    return out;
+    for (let i = used; i < into.children.length; i++) into.children[i].visible = false;
   }
 
   /** A soft radial gradient (the default light shape). */
