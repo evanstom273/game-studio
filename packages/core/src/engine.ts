@@ -92,7 +92,7 @@ export class Engine {
       // Gamepads can be blocked (permissions policy, sandboxing): the game must keep running.
       this.getGamepads = () => [];
     }
-    tree.dispatchInput(Input.beginFrame(this.frame, this.physicsTick, pads));
+    tree.dispatchInput(Input.beginFrame(this.frame, this.physicsTick, pads, (e) => tree.guiInput(e)));
 
     const fixed = tree.physicsDelta;
     this.accumulator += dt;

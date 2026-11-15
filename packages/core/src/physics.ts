@@ -13,6 +13,28 @@ import type { Shape2DData, Shape3DData } from './properties';
 
 // --- server contracts -----------------------------------------------------------------------------------
 
+/** A ray query (global coordinates). */
+export interface RayQuery<V> {
+  from: V;
+  to: V;
+  /** Layers the ray can hit. */
+  collisionMask: number;
+  /** Objects to ignore. */
+  exclude?: ReadonlySet<Node>;
+  collideWithBodies?: boolean;
+  collideWithAreas?: boolean;
+  /** Report a hit (at the origin) when the ray starts inside a shape. */
+  hitFromInside?: boolean;
+}
+
+export interface RayHit<V> {
+  collider: Node;
+  /** Global hit point. */
+  position: V;
+  /** Surface normal at the hit point. */
+  normal: V;
+}
+
 export interface PhysicsServer2D {
   readonly dimension: '2d';
   bodyEntered(body: CollisionObject2D): void;
@@ -20,6 +42,8 @@ export interface PhysicsServer2D {
   shapesChanged(body: CollisionObject2D): void;
   /** Moves a character along its velocity, sliding on surfaces; updates its position, velocity and contact flags. */
   moveAndSlide(body: CharacterBody2D, delta: number): void;
+  /** The closest hit along a ray, or null. */
+  intersectRay(query: RayQuery<Vector2>): RayHit<Vector2> | null;
   step(delta: number): void;
   dispose(): void;
 }
@@ -30,6 +54,7 @@ export interface PhysicsServer3D {
   bodyExited(body: CollisionObject3D): void;
   shapesChanged(body: CollisionObject3D): void;
   moveAndSlide(body: CharacterBody3D, delta: number): void;
+  intersectRay(query: RayQuery<Vector3>): RayHit<Vector3> | null;
   step(delta: number): void;
   dispose(): void;
 }
@@ -75,6 +100,21 @@ export class StaticBody2D extends CollisionObject2D {
   static override readonly typeName: string = 'StaticBody2D';
   friction = 1;
   bounce = 0;
+}
+
+/**
+ * A body moved by its transform (scripts, tweens, AnimationPlayer, PathFollow2D) rather than by
+ * physics: moving platforms, doors, elevators. It pushes rigid bodies and carries characters
+ * standing on it.
+ */
+export class AnimatableBody2D extends StaticBody2D {
+  static override readonly typeName: string = 'AnimatableBody2D';
+  /** @internal Velocity of the last physics step (px/s), set by the physics server. */
+  __platformVelocity = new Vector2();
+  /** Velocity of the last physics step in pixels per second. */
+  getPlatformVelocity() {
+    return this.__platformVelocity.clone();
+  }
 }
 
 export class RigidBody2D extends CollisionObject2D {
@@ -241,6 +281,16 @@ export class StaticBody3D extends CollisionObject3D {
   bounce = 0;
 }
 
+/** A body moved by its transform (moving platforms, doors, lifts). Pushes rigid bodies and carries characters. */
+export class AnimatableBody3D extends StaticBody3D {
+  static override readonly typeName: string = 'AnimatableBody3D';
+  /** @internal Velocity of the last physics step (m/s), set by the physics server. */
+  __platformVelocity = new Vector3();
+  getPlatformVelocity() {
+    return this.__platformVelocity.clone();
+  }
+}
+
 export class RigidBody3D extends CollisionObject3D {
   static override readonly typeName: string = 'RigidBody3D';
   mass = 1;
@@ -361,5 +411,125 @@ export class CollisionShape3D extends Node3D {
   }
   private notifyBody() {
     if (this.parent instanceof CollisionObject3D) this.parent.__shapesChanged();
+  }
+}
+
+// --- ray casts -----------------------------------------------------------------------------------------------
+
+/**
+ * Casts a ray from the node to `targetPosition` (local) every physics tick and reports the first
+ * thing it hits (ground checks, line of sight, lasers). Needs the physics server of its dimension.
+ */
+export class RayCast2D extends Node2D {
+  static override readonly typeName: string = 'RayCast2D';
+  enabled = true;
+  targetPosition = new Vector2(0, 50);
+  collisionMask = 1;
+  /** Ignore the CollisionObject2D this ray is a child of. */
+  excludeParent = true;
+  collideWithAreas = false;
+  collideWithBodies = true;
+  hitFromInside = false;
+  private hit: RayHit<Vector2> | null = null;
+  private exceptions = new Set<Node>();
+
+  override __physicsProcess(delta: number) {
+    super.__physicsProcess(delta);
+    if (this.enabled) this.forceRaycastUpdate();
+  }
+
+  /** Casts now instead of waiting for the next physics tick. */
+  forceRaycastUpdate() {
+    const server = this.tree?.physics2d;
+    if (!server) {
+      this.hit = null;
+      return;
+    }
+    const exclude = new Set(this.exceptions);
+    if (this.excludeParent && this.parent instanceof CollisionObject2D) exclude.add(this.parent);
+    const t = this.globalTransform;
+    this.hit = server.intersectRay({ from: t.origin, to: t.apply(this.targetPosition), collisionMask: this.collisionMask, exclude, collideWithAreas: this.collideWithAreas, collideWithBodies: this.collideWithBodies, hitFromInside: this.hitFromInside });
+  }
+
+  isColliding() {
+    return this.enabled && this.hit !== null && !this.hit.collider.isFreed();
+  }
+  getCollider<T extends Node = Node>(): T | null {
+    return this.isColliding() ? (this.hit!.collider as T) : null;
+  }
+  /** Global hit point. */
+  getCollisionPoint() {
+    return this.hit?.position.clone() ?? new Vector2();
+  }
+  getCollisionNormal() {
+    return this.hit?.normal.clone() ?? new Vector2();
+  }
+  addException(node: Node) {
+    this.exceptions.add(node);
+  }
+  removeException(node: Node) {
+    this.exceptions.delete(node);
+  }
+  clearExceptions() {
+    this.exceptions.clear();
+  }
+  setCollisionMaskValue(layer: number, value: boolean) {
+    const bit = 1 << (layer - 1);
+    this.collisionMask = value ? (this.collisionMask | bit) >>> 0 : (this.collisionMask & ~bit) >>> 0;
+  }
+}
+
+/** Casts a ray from the node to `targetPosition` (local, metres) every physics tick. */
+export class RayCast3D extends Node3D {
+  static override readonly typeName: string = 'RayCast3D';
+  enabled = true;
+  targetPosition = new Vector3(0, -1, 0);
+  collisionMask = 1;
+  excludeParent = true;
+  collideWithAreas = false;
+  collideWithBodies = true;
+  hitFromInside = false;
+  private hit: RayHit<Vector3> | null = null;
+  private exceptions = new Set<Node>();
+
+  override __physicsProcess(delta: number) {
+    super.__physicsProcess(delta);
+    if (this.enabled) this.forceRaycastUpdate();
+  }
+  forceRaycastUpdate() {
+    const server = this.tree?.physics3d;
+    if (!server) {
+      this.hit = null;
+      return;
+    }
+    const exclude = new Set(this.exceptions);
+    if (this.excludeParent && this.parent instanceof CollisionObject3D) exclude.add(this.parent);
+    const t = this.globalTransform;
+    this.hit = server.intersectRay({ from: t.getPosition(), to: t.transformPoint(this.targetPosition), collisionMask: this.collisionMask, exclude, collideWithAreas: this.collideWithAreas, collideWithBodies: this.collideWithBodies, hitFromInside: this.hitFromInside });
+  }
+  isColliding() {
+    return this.enabled && this.hit !== null && !this.hit.collider.isFreed();
+  }
+  getCollider<T extends Node = Node>(): T | null {
+    return this.isColliding() ? (this.hit!.collider as T) : null;
+  }
+  getCollisionPoint() {
+    return this.hit?.position.clone() ?? new Vector3();
+  }
+  getCollisionNormal() {
+    return this.hit?.normal.clone() ?? new Vector3();
+  }
+  addException(node: Node) {
+    this.exceptions.add(node);
+  }
+  removeException(node: Node) {
+    this.exceptions.delete(node);
+  }
+  clearExceptions() {
+    this.exceptions.clear();
+  }
+  setCollisionMaskValue(layer: number, value: boolean) {
+    const bit = 1 << (layer - 1);
+    this.collisionMask = value ? (this.collisionMask | bit) >>> 0 : (this.collisionMask & ~bit) >>> 0;
   }
 }

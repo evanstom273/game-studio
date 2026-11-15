@@ -40,7 +40,7 @@ export class Timer extends Node {
     if (this.processCallback === 'idle') this.tick(delta);
   }
   /** @internal called by the tree on physics ticks */
-  __physicsTick(delta: number) {
+  override __physicsProcess(delta: number) {
     if (this.processCallback === 'physics') this.tick(delta);
   }
 
@@ -56,16 +56,31 @@ export class Timer extends Node {
   }
 }
 
+/** What the audio server needs from a player node (AudioStreamPlayer, AudioStreamPlayer2D/3D). */
+export interface AudioPlayback {
+  stream: AudioStream | null;
+  volumeDb: number;
+  pitchScale: number;
+  loop: boolean;
+  /** @internal set by the audio server */
+  __playing: boolean;
+  readonly finished: Signal<[]>;
+  isInsideTree(): boolean;
+  /** Positional players: volume multiplier (0–1) and stereo pan (-1 left … 1 right) for the current listener. */
+  getSpatialMix?(): { gain: number; pan: number };
+}
+
 /** The audio contract; implemented by packages/audio (Web Audio). */
 export interface AudioServer {
-  play(player: AudioStreamPlayer, fromPosition: number): void;
-  stop(player: AudioStreamPlayer): void;
-  update(player: AudioStreamPlayer): void;
+  play(player: AudioPlayback, fromPosition: number): void;
+  stop(player: AudioPlayback): void;
+  /** Applies changed volume, pitch, loop and (for positional players) distance and panning. */
+  update(player: AudioPlayback): void;
   dispose(): void;
 }
 
 /** Plays a sound or music track (not positional). */
-export class AudioStreamPlayer extends Node {
+export class AudioStreamPlayer extends Node implements AudioPlayback {
   static override readonly typeName: string = 'AudioStreamPlayer';
   stream: AudioStream | null = null;
   volumeDb = 0;
@@ -90,6 +105,11 @@ export class AudioStreamPlayer extends Node {
   override __ready() {
     super.__ready();
     if (this.autoplay) this.play();
+  }
+  override __process(delta: number) {
+    super.__process(delta);
+    // Volume, pitch and loop changes apply while playing.
+    if (this.__playing) this.tree?.audio?.update(this);
   }
   override __exitTree() {
     this.stop();

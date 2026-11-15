@@ -7,7 +7,7 @@
  */
 import RAPIER from '@dimforge/rapier2d-compat';
 import { Vector2 } from '@gs/shared';
-import { Area2D, CharacterBody2D, CollisionObject2D, CollisionShape2D, RigidBody2D, StaticBody2D, type MotionResult, type Node, type PhysicsServer2D, type SceneTree, type SlideCollision } from '@gs/core';
+import { AnimatableBody2D, Area2D, CharacterBody2D, CollisionObject2D, CollisionShape2D, RigidBody2D, StaticBody2D, TileMapLayer, type MotionResult, type Node, type PhysicsServer2D, type RayHit, type RayQuery, type SceneTree, type SlideCollision } from '@gs/core';
 
 export const PIXELS_PER_METER = 100;
 const PPM = PIXELS_PER_METER;
@@ -29,6 +29,10 @@ interface BodyRecord {
   lastVel: Vector2;
   lastAngVel: number;
   controller?: RAPIER.KinematicCharacterController;
+  /** Tile maps: the layout the colliders were built from. */
+  collisionKey?: string;
+  /** Characters: velocity of the platform they stood on last tick (added when they leave it). */
+  platformVelocity?: Vector2 | null;
 }
 
 const groups = (layer: number, mask: number) => (((layer & 0xffff) << 16) | (mask & 0xffff)) >>> 0;
@@ -57,7 +61,7 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
       desc = node.freeze ? RAPIER.RigidBodyDesc.kinematicPositionBased() : RAPIER.RigidBodyDesc.dynamic();
       desc.setLinvel(node.linearVelocity.x / PPM, node.linearVelocity.y / PPM).setAngvel(node.angularVelocity).setGravityScale(node.gravityScale).setLinearDamping(node.linearDamp).setAngularDamping(node.angularDamp).setCanSleep(true);
       if (node.lockRotation) desc.lockRotations();
-    } else if (node instanceof CharacterBody2D || node instanceof Area2D) desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
+    } else if (node instanceof CharacterBody2D || node instanceof Area2D || node instanceof AnimatableBody2D) desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
     else desc = RAPIER.RigidBodyDesc.fixed();
     desc.setTranslation(pos.x / PPM, pos.y / PPM).setRotation(rot);
     const body = this.world.createRigidBody(desc);
@@ -100,6 +104,11 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
     }
     rec.colliders = [];
     const node = rec.node;
+    if (node instanceof TileMapLayer) {
+      this.buildTileColliders(rec, node);
+      rec.dirty = false;
+      return;
+    }
     const inv = node.globalTransform.invert();
     const shapes = node.children.filter((c): c is CollisionShape2D => c instanceof CollisionShape2D && c.isInsideTree());
     const totalArea = shapes.reduce((a, s) => a + area(s), 0) || 1;
@@ -120,8 +129,9 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
       if (node instanceof Area2D) {
         desc.setSensor(true).setActiveEvents(RAPIER.ActiveEvents.COLLISION_EVENTS).setActiveCollisionTypes(RAPIER.ActiveCollisionTypes.ALL);
       } else {
-        const friction = node instanceof RigidBody2D || node instanceof StaticBody2D ? node.friction : 0;
-        const bounce = node instanceof RigidBody2D || node instanceof StaticBody2D ? node.bounce : 0;
+        const physical = node instanceof RigidBody2D || node instanceof StaticBody2D;
+        const friction = physical ? node.friction : 0;
+        const bounce = physical ? node.bounce : 0;
         desc.setFriction(friction).setRestitution(bounce);
         if (node instanceof RigidBody2D) {
           desc.setMass((node.mass * area(shapeNode)) / totalArea);
@@ -136,12 +146,31 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
     rec.dirty = false;
   }
 
-  private syncIn(rec: BodyRecord) {
-    if (rec.dirty) this.rebuild(rec);
+  /** Tile maps: one box per run of solid tiles in a row (merged, so characters don't catch on seams). */
+  private buildTileColliders(rec: BodyRecord, node: TileMapLayer) {
+    rec.collisionKey = node.__collisionKey();
+    const sc = node.globalTransform.scale;
+    for (const r of node.getCollisionRects()) {
+      const desc = RAPIER.ColliderDesc.cuboid((r.width * Math.abs(sc.x)) / 2 / PPM, (r.height * Math.abs(sc.y)) / 2 / PPM)
+        .setTranslation(((r.x + r.width / 2) * sc.x) / PPM, ((r.y + r.height / 2) * sc.y) / PPM)
+        .setCollisionGroups(groups(node.collisionLayer, node.collisionMask))
+        .setFriction(node.friction)
+        .setRestitution(node.bounce);
+      const collider = this.world.createCollider(desc, rec.body);
+      rec.colliders.push(collider);
+      this.byCollider.set(collider.handle, rec);
+    }
+  }
+
+  private syncIn(rec: BodyRecord, delta: number) {
     const n = rec.node;
+    if (n instanceof TileMapLayer && rec.collisionKey !== n.__collisionKey()) rec.dirty = true;
+    if (rec.dirty) this.rebuild(rec);
     const pos = n.globalPosition;
     const rot = n.globalRotation;
     const moved = !pos.equals(rec.lastPos, 1e-6) || Math.abs(rot - rec.lastRot) > 1e-9;
+    // Moving platforms: the velocity they move at this step carries characters standing on them.
+    if (n instanceof AnimatableBody2D) n.__platformVelocity = moved && delta > 0 ? pos.sub(rec.lastPos).scale(1 / delta) : new Vector2();
     if (n instanceof RigidBody2D && !n.freeze) {
       if (moved) {
         rec.body.setTranslation({ x: pos.x / PPM, y: pos.y / PPM }, true);
@@ -199,6 +228,18 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
       rec.body.setTranslation({ x: start.x / PPM, y: start.y / PPM }, true);
       this.world.propagateModifiedBodyPositionsToColliders();
     }
+    // Standing on a moving platform: first move with it (ignoring the platform itself), like Godot.
+    const platform = node.isOnFloor() ? this.floorPlatform(node) : null;
+    const platformVel = platform ? platform.node.__platformVelocity.clone() : null;
+    if (platform && platformVel && platformVel.lengthSquared() > 0) {
+      const carry = platformVel.scale(delta);
+      c.computeColliderMovement(collider, { x: carry.x / PPM, y: carry.y / PPM }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(node.collisionLayer, node.collisionMask), (other) => other.parent()?.handle !== rec.body.handle && other.parent()?.handle !== platform.body.handle);
+      const cm = c.computedMovement();
+      const carried = new Vector2(start.x + cm.x * PPM, start.y + cm.y * PPM);
+      rec.body.setTranslation({ x: carried.x / PPM, y: carried.y / PPM }, true);
+      this.world.propagateModifiedBodyPositionsToColliders();
+      start.set(carried.x, carried.y);
+    }
     // Like Godot: a grounded character moves along the floor (snapping keeps it attached) instead of
     // being pushed into it, which makes the controller catch on the surface every few ticks.
     let motion = node.velocity.scale(delta);
@@ -236,6 +277,9 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
         if (dn < 0 && Math.abs(col.normal.dot(up)) < cosMax) v = v.sub(col.normal.scale(dn));
       }
     }
+    // Leaving a moving platform (jumping off, walking off the edge) keeps its momentum.
+    if (!result.onFloor && rec.platformVelocity) v = v.add(rec.platformVelocity);
+    rec.platformVelocity = result.onFloor ? platformVel : null;
     node.velocity = v;
     node.globalPosition = end;
     rec.body.setNextKinematicTranslation({ x: end.x / PPM, y: end.y / PPM });
@@ -243,8 +287,53 @@ export class PhysicsServer2DRapier implements PhysicsServer2D {
     node.__setMotion(result);
   }
 
+  /** The AnimatableBody2D a grounded character stood on in its last move, if any. */
+  private floorPlatform(node: CharacterBody2D): (BodyRecord & { node: AnimatableBody2D }) | null {
+    const up = node.upDirection.normalized();
+    const cosMax = Math.cos(node.floorMaxAngle);
+    for (let i = 0; i < node.getSlideCollisionCount(); i++) {
+      const col = node.getSlideCollision(i);
+      if (!col || !(col.collider instanceof AnimatableBody2D) || col.normal.dot(up) < cosMax - 1e-4) continue;
+      const rec = this.records.get(col.collider);
+      if (rec) return rec as BodyRecord & { node: AnimatableBody2D };
+    }
+    return null;
+  }
+
+  intersectRay(q: RayQuery<Vector2>): RayHit<Vector2> | null {
+    const d = q.to.sub(q.from);
+    const len = d.length();
+    if (len < 1e-9) return null;
+    const dir = d.scale(1 / len);
+    const ray = new RAPIER.Ray({ x: q.from.x / PPM, y: q.from.y / PPM }, { x: dir.x, y: dir.y });
+    let flags = 0;
+    if (q.collideWithBodies === false) flags |= RAPIER.QueryFilterFlags.EXCLUDE_SOLIDS;
+    if (!q.collideWithAreas) flags |= RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
+    const skip = new Set<number>();
+    // Godot semantics: the ray hits objects on its mask's layers (the objects' own masks don't matter).
+    const accept = (col: RAPIER.Collider) => {
+      if (skip.has(col.handle)) return false;
+      const rec = this.byCollider.get(col.handle);
+      return !!rec && (rec.node.collisionLayer & q.collisionMask) !== 0 && !q.exclude?.has(rec.node);
+    };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const hit = this.world.castRayAndGetNormal(ray, len / PPM, true, flags, undefined, undefined, undefined, accept);
+      if (!hit) return null;
+      // Starting inside a shape: report it only when asked to, otherwise look past it.
+      if (hit.timeOfImpact <= 1e-6 && !q.hitFromInside) {
+        skip.add(hit.collider.handle);
+        continue;
+      }
+      const rec = this.byCollider.get(hit.collider.handle)!;
+      const point = q.from.add(dir.scale(hit.timeOfImpact * PPM));
+      const normal = hit.timeOfImpact <= 1e-6 ? new Vector2() : new Vector2(hit.normal.x, hit.normal.y).normalized();
+      return { collider: rec.node, position: point, normal };
+    }
+    return null;
+  }
+
   step(delta: number) {
-    for (const rec of this.records.values()) this.syncIn(rec);
+    for (const rec of this.records.values()) this.syncIn(rec, delta);
     this.world.timestep = delta;
     this.world.step(this.events);
     // Write simulated bodies back.

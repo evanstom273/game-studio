@@ -2,7 +2,7 @@
  * 3D nodes. Units are metres, y-up, -z forward. Rotation is Euler radians in YXZ order.
  * A Node3D inherits its transform from the nearest Node3D ancestor.
  */
-import { Color, Mat4, Quaternion, Vector3, degToRad, radToDeg } from '@gs/shared';
+import { Color, Mat4, Quaternion, Vector2, Vector3, degToRad, radToDeg } from '@gs/shared';
 import { Node } from './node';
 import { DEFAULT_MATERIAL, type MaterialData, type MeshData } from './properties';
 
@@ -179,6 +179,92 @@ export class Camera3D extends Node3D {
   }
   isCurrent() {
     return this.tree?.currentCamera3D === this;
+  }
+
+  /** Viewport size in pixels (what the 3D renderer draws into). */
+  getViewportSize(): Vector2 {
+    return this.tree?.viewportSize.clone() ?? new Vector2(1152, 648);
+  }
+
+  /** View → clip space (OpenGL convention, like three.js). */
+  getProjectionMatrix(aspect = this.getViewportSize().x / Math.max(1, this.getViewportSize().y)): Mat4 {
+    const n = this.near;
+    const f = this.far;
+    if (this.projection === 'orthogonal') {
+      const top = this.size / 2;
+      const right = top * aspect;
+      return new Mat4([1 / right, 0, 0, 0, 0, 1 / top, 0, 0, 0, 0, -2 / (f - n), 0, 0, 0, -(f + n) / (f - n), 1]);
+    }
+    const t = 1 / Math.tan(degToRad(this.fov) / 2);
+    return new Mat4([t / aspect, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, (2 * f * n) / (n - f), 0]);
+  }
+
+  /** World → clip space (homogeneous [x, y, z, w]). */
+  worldToClip(p: Vector3): [number, number, number, number] {
+    const m = this.getProjectionMatrix().multiply(this.globalTransform.invert()).m;
+    return [m[0] * p.x + m[4] * p.y + m[8] * p.z + m[12], m[1] * p.x + m[5] * p.y + m[9] * p.z + m[13], m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14], m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15]];
+  }
+
+  /** Where a world point appears on screen, in viewport pixels (Godot's unproject_position). */
+  unprojectPosition(world: Vector3): Vector2 {
+    const [x, y, , w] = this.worldToClip(world);
+    const vp = this.getViewportSize();
+    const iw = Math.abs(w) > 1e-9 ? 1 / w : 0;
+    return new Vector2((x * iw * 0.5 + 0.5) * vp.x, (1 - (y * iw * 0.5 + 0.5)) * vp.y);
+  }
+
+  /** True when the point is behind the camera (unprojectPosition is meaningless then). */
+  isPositionBehind(world: Vector3) {
+    return this.toLocal(world).z > -this.near;
+  }
+
+  /** Whether a world point is inside the view frustum. */
+  isPositionInFrustum(world: Vector3) {
+    const [x, y, z, w] = this.worldToClip(world);
+    return w > 0 && Math.abs(x) <= w && Math.abs(y) <= w && z >= -w && z <= w;
+  }
+
+  /** Start of the ray through a screen point (viewport pixels), for mouse picking. */
+  projectRayOrigin(screen: Vector2): Vector3 {
+    if (this.projection === 'perspective') return this.globalPosition;
+    return this.projectLocalPoint(screen, this.near);
+  }
+
+  /** Direction of the ray through a screen point (viewport pixels). */
+  projectRayNormal(screen: Vector2): Vector3 {
+    if (this.projection === 'orthogonal') return this.getForward();
+    return this.projectLocalPoint(screen, 1).sub(this.globalPosition).normalized();
+  }
+
+  /** The world point at `depth` metres in front of the camera under a screen point. */
+  projectPosition(screen: Vector2, depth: number): Vector3 {
+    return this.projectLocalPoint(screen, depth);
+  }
+
+  private projectLocalPoint(screen: Vector2, depth: number): Vector3 {
+    const vp = this.getViewportSize();
+    const nx = (screen.x / Math.max(1, vp.x)) * 2 - 1;
+    const ny = 1 - (screen.y / Math.max(1, vp.y)) * 2;
+    const aspect = vp.x / Math.max(1, vp.y);
+    let local: Vector3;
+    if (this.projection === 'orthogonal') {
+      const top = this.size / 2;
+      local = new Vector3(nx * top * aspect, ny * top, -depth);
+    } else {
+      const t = Math.tan(degToRad(this.fov) / 2);
+      local = new Vector3(nx * t * aspect * depth, ny * t * depth, -depth);
+    }
+    return this.toGlobal(local);
+  }
+
+  /**
+   * Whether any part of a world-space box (given by its 8 corners) can be inside the frustum.
+   * Conservative: a box is culled only when all corners are outside the same clip plane.
+   */
+  isBoxInFrustum(corners: readonly Vector3[]): boolean {
+    const clips = corners.map((c) => this.worldToClip(c));
+    const outside = (test: (c: [number, number, number, number]) => boolean) => clips.every(test);
+    return !(outside((c) => c[0] < -c[3]) || outside((c) => c[0] > c[3]) || outside((c) => c[1] < -c[3]) || outside((c) => c[1] > c[3]) || outside((c) => c[2] < -c[3]) || outside((c) => c[2] > c[3]));
   }
 }
 

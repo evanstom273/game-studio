@@ -72,6 +72,8 @@ export class Node {
   /** @internal */ __exitTree(): void {}
   /** @internal Called every frame before `_process` (engine-side per-frame work, e.g. animation). */
   __process(_delta: number): void {}
+  /** @internal Called every physics tick before `_physicsProcess` (e.g. ray casts, physics-driven animation). */
+  __physicsProcess(_delta: number): void {}
 
   // --- naming ------------------------------------------------------------------------------------------
   get name() {

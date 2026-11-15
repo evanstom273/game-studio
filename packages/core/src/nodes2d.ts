@@ -82,7 +82,22 @@ export class Node2D extends Node {
   isVisibleInTree(): boolean {
     if (!this.visible) return false;
     const p = this.parent2D;
-    return p ? p.isVisibleInTree() : true;
+    if (p) return p.isVisibleInTree();
+    const layer = this.getCanvasLayer();
+    return layer ? layer.visible : true;
+  }
+
+  /** The CanvasLayer this item is drawn in (null = the default canvas, which the camera moves). */
+  getCanvasLayer(): CanvasLayer | null {
+    for (let p = this.parent; p; p = p.parent) if (p instanceof CanvasLayer) return p;
+    return null;
+  }
+
+  /** Canvas → game viewport pixels: the layer's transform, or the camera's for the default canvas. */
+  getCanvasTransform(): Transform2D {
+    const layer = this.getCanvasLayer();
+    if (layer) return layer.transform;
+    return this.tree?.canvasTransform ?? Transform2D.identity();
   }
 
   show() {
@@ -109,11 +124,9 @@ export class Node2D extends Node {
     return this.globalTransform.apply(localPoint);
   }
 
-  /** The pointer position in world coordinates (through the current camera). */
+  /** The pointer position in canvas coordinates (through the current camera, or this node's CanvasLayer). */
   getGlobalMousePosition(): Vector2 {
-    const tree = this.tree;
-    const p = Input.getPointerPosition();
-    return tree ? tree.canvasTransform.invert().apply(p) : p;
+    return this.getCanvasTransform().invert().apply(Input.getPointerPosition());
   }
   /** The pointer position in this node's local coordinates. */
   getLocalMousePosition(): Vector2 {
@@ -274,5 +287,30 @@ export class Camera2D extends Node2D {
   /** The world point at the centre of the screen. */
   getScreenCenterPosition() {
     return (this.smoothedPosition ?? this.globalPosition).add(this.offset);
+  }
+}
+
+/**
+ * Draws its children on a separate layer that ignores the camera (HUDs, menus, backgrounds).
+ * Layers draw in `layer` order; the game world is layer 0, so negative layers go behind it.
+ */
+export class CanvasLayer extends Node {
+  static override readonly typeName: string = 'CanvasLayer';
+  layer = 1;
+  visible = true;
+  /** Moves, rotates and scales the whole layer (viewport pixels). */
+  offset = new Vector2();
+  rotation = 0;
+  scale = new Vector2(1, 1);
+
+  /** Layer → viewport pixels. */
+  get transform(): Transform2D {
+    return Transform2D.compose(this.offset, this.rotation, this.scale);
+  }
+  show() {
+    this.visible = true;
+  }
+  hide() {
+    this.visible = false;
   }
 }
