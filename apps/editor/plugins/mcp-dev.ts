@@ -8,10 +8,10 @@ import type { Duplex } from 'node:stream';
 import type { Plugin } from 'vite';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { RelayCore, type RelaySocket } from '../../../packages/mcp/src/relay';
-import { buildMcpServer } from '../../../packages/mcp/src/tools';
-import { keyFromRequest, roomName } from '../../../packages/mcp/src/keys';
-import { BRIDGE_MAX_PAYLOAD, LINK_KEY_RE } from '../../../packages/mcp/src/protocol';
+import { RelayCore, type RelaySocket } from '../../../packages/mcp/src/relay.ts';
+import { buildMcpServer } from '../../../packages/mcp/src/tools.ts';
+import { keyFromRequest, roomName } from '../../../packages/mcp/src/keys.ts';
+import { BRIDGE_MAX_PAYLOAD, LINK_KEY_RE } from '../../../packages/mcp/src/protocol.ts';
 
 const CORS: Record<string, string> = {
   'access-control-allow-origin': '*',

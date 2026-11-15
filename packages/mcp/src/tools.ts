@@ -5,8 +5,8 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { toErrorPayload } from '../../shared/src/errors';
-import type { BridgeMethod } from './protocol';
+import { toErrorPayload } from '../../shared/src/errors.ts';
+import type { BridgeMethod } from './protocol.ts';
 
 export interface Relay {
   request(method: BridgeMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;

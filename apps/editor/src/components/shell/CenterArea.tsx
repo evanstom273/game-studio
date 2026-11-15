@@ -15,12 +15,10 @@ function Tabs() {
   const docs = useEditor((s) => s.openDocs);
   const active = useEditor((s) => s.active);
   const mainScene = useEditor((s) => s.project?.settings.mainScene);
-  const dirtyScripts = useEditor((s) => s.project?.scripts);
-  void dirtyScripts;
   const { openDoc, closeDoc } = useEditor.getState();
   const isActive = (d: DocRef) => active?.kind === d.kind && active.path === d.path;
   return (
-    <div className="flex h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-panel" role="tablist" data-testid="doc-tabs">
+    <div className="flex min-h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-panel" role="tablist" data-testid="doc-tabs">
       {docs.map((d) => {
         const Icon = d.kind === 'scene' ? Clapperboard : FileCode2;
         return (
@@ -36,7 +34,7 @@ function Tabs() {
           </div>
         );
       })}
-      <IconButton label="New scene" className="m-1" onClick={() => useUi.getState().set({ dialog: 'new-scene' })} data-testid="new-scene-tab">
+      <IconButton label="New scene" className="mx-1 self-center" onClick={() => useUi.getState().set({ dialog: 'new-scene' })} data-testid="new-scene-tab">
         <Plus size={14} />
       </IconButton>
     </div>

@@ -33,7 +33,6 @@ const api = {
 };
 
 declare global {
-  // eslint-disable-next-line no-var
   var GameStudio: typeof api;
 }
 globalThis.GameStudio = api;

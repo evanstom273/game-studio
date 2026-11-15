@@ -30,9 +30,20 @@ export function ToolButtons({ className }: { className?: string }) {
   );
 }
 
-export function PlayButtons() {
+export function PlayButtons({ compact }: { compact?: boolean }) {
   const status = usePlay((s) => s.status);
   const playing = status === 'running' || status === 'paused' || status === 'starting';
+  if (compact)
+    // Phones: one button — play the main scene, or stop the running game.
+    return playing ? (
+      <IconButton label="Stop (F8)" onClick={stop} data-testid="stop">
+        <Square size={15} className="text-err" />
+      </IconButton>
+    ) : (
+      <IconButton label="Play the main scene (F5)" onClick={() => void play('main')} data-testid="play-main">
+        <Play size={16} className="text-ok" />
+      </IconButton>
+    );
   return (
     <div className="flex items-center gap-0.5" role="toolbar" aria-label="Play">
       <IconButton label="Play the main scene (F5)" onClick={() => void play('main')} active={playing} data-testid="play-main">
@@ -75,7 +86,7 @@ export function Toolbar({ compact }: { compact: boolean }) {
       <IconButton label="Projects" onClick={() => navigate({ name: 'dashboard' })} data-testid="back-to-projects">
         <ChevronLeft size={16} />
       </IconButton>
-      <div className="flex min-w-0 items-center gap-1.5 px-1">
+      <div className={cx('flex min-w-0 items-center gap-1.5 px-1', compact && 'flex-1')}>
         <span className="truncate text-[13px] font-semibold" data-testid="project-title">
           {name}
         </span>
@@ -94,8 +105,8 @@ export function Toolbar({ compact }: { compact: boolean }) {
       <IconButton label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo} data-testid="redo">
         <Redo2 size={15} />
       </IconButton>
-      <div className="flex-1" />
-      <PlayButtons />
+      {!compact && <div className="flex-1" />}
+      <PlayButtons compact={compact} />
       <IconButton label="AI connection" onClick={() => set({ dialog: 'mcp' })} data-testid="toolbar-mcp">
         <Bot size={16} className={bridge === 'connected' ? 'text-ok' : bridge === 'off' ? undefined : 'text-warn'} />
       </IconButton>

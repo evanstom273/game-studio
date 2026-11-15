@@ -598,11 +598,20 @@ function apply(ctx: Ctx, c: ParsedCommand): CommandResult {
         if (!uses) continue;
         const w = draft.write(sp);
         walkDoc(w.root, (n) => {
-          if (n.script === from) (n.script = to), updated++;
-          if (n.instance === from) (n.instance = to), updated++;
+          if (n.script === from) {
+            n.script = to;
+            updated++;
+          }
+          if (n.instance === from) {
+            n.instance = to;
+            updated++;
+          }
         });
         forEachResourceRef(w, registry, (_n, _k, _kind, p, set) => {
-          if (p === from) set(to), updated++;
+          if (p === from) {
+            set(to);
+            updated++;
+          }
         });
       }
       return { op: c.op, path: to, note: updated ? `updated ${updated} reference(s)` : undefined };
@@ -629,7 +638,10 @@ function apply(ctx: Ctx, c: ParsedCommand): CommandResult {
         });
         if (!uses) continue;
         forEachResourceRef(draft.write(sp), registry, (_n, _k, _kind, p, set) => {
-          if (p === path) set(null), cleared++;
+          if (p === path) {
+            set(null);
+            cleared++;
+          }
         });
       }
       return { op: c.op, path, note: cleared ? `cleared ${cleared} reference(s)` : undefined };
@@ -702,8 +714,19 @@ export function applyCommands(project: ProjectDoc, commands: readonly unknown[],
     }
   });
   const next = ctx.draft.asProject();
+  // Commands that set values they already had produce no change: keep the original objects so
+  // history, autosave and change detection see "nothing happened" (no empty undo steps).
+  for (const p of Object.keys(next.scenes)) if (next.scenes[p] !== project.scenes[p] && project.scenes[p] && jsonEqual(next.scenes[p], project.scenes[p])) next.scenes[p] = project.scenes[p];
+  if (next.settings !== project.settings && jsonEqual(next.settings, project.settings)) next.settings = project.settings;
+  const sameKeys = <T,>(a: Record<string, T>, b: Record<string, T>, eq: (x: T, y: T) => boolean) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => k in b && eq(a[k], b[k]));
+  const unchanged =
+    next.name === project.name &&
+    next.settings === project.settings &&
+    sameKeys(next.scenes, project.scenes, (x, y) => x === y) &&
+    sameKeys(next.scripts, project.scripts, (x, y) => x === y) &&
+    sameKeys(next.assets, project.assets, (x, y) => jsonEqual(x, y));
   const changedScenes = Object.keys(next.scenes).filter((p) => next.scenes[p] !== project.scenes[p]);
-  return { project: results.length ? { ...next, updatedAt: opts.now ?? Date.now() } : project, results, refs: ctx.refs, changedScenes };
+  return { project: unchanged ? project : { ...next, updatedAt: opts.now ?? Date.now() }, results, refs: ctx.refs, changedScenes };
 }
 
 /** A short undo-history label for a batch. */

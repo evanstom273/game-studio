@@ -3,9 +3,9 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { fileURLToPath } from 'node:url';
-import { aliases } from '../../aliases';
-import { runtimeBundles } from './plugins/runtime-bundles';
-import { mcpDevRelay } from './plugins/mcp-dev';
+import { aliases } from '../../aliases.ts';
+import { runtimeBundles } from './plugins/runtime-bundles.ts';
+import { mcpDevRelay } from './plugins/mcp-dev.ts';
 
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -34,9 +34,16 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
-        // Physics bundles are large; precache them too so play mode works offline.
-        maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
+        // The app shell and the core runtime are precached. The big pieces (the TypeScript
+        // compiler's WebAssembly, physics) are cached the first time they are used, so the first
+        // visit on a phone stays light and everything still works offline afterwards.
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        globIgnores: ['**/runtime/gs-physics*.js'],
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+        runtimeCaching: [
+          { urlPattern: /\/assets\/.*\.wasm$/, handler: 'CacheFirst', options: { cacheName: 'gs-wasm', expiration: { maxEntries: 4 } } },
+          { urlPattern: /\/runtime\/gs-physics(2d|3d)\.js$/, handler: 'StaleWhileRevalidate', options: { cacheName: 'gs-physics' } },
+        ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/mcp\//, /^\/bridge\//, /^\/player\.html/, /^\/runtime\//],
       },

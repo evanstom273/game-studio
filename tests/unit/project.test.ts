@@ -240,3 +240,14 @@ describe('command typing', () => {
     expect(ops).toHaveLength(4);
   });
 });
+
+describe('no-op edits', () => {
+  it('returns the same document when commands change nothing (no empty undo steps)', () => {
+    const p = applyCommands(base(), [{ op: 'add_node', scene: 'scenes/main.scene', type: 'Label2D', name: 'L', props: { fontSize: 40 } }]).project;
+    const r = applyCommands(p, [{ op: 'set_props', scene: 'scenes/main.scene', node: 'L', props: { fontSize: 40 } }]);
+    expect(r.project).toBe(p);
+    expect(r.changedScenes).toEqual([]);
+    const r2 = applyCommands(p, [{ op: 'set_props', scene: 'scenes/main.scene', node: 'L', props: { fontSize: 41 } }]);
+    expect(r2.project).not.toBe(p);
+  });
+});

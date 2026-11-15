@@ -43,7 +43,7 @@ function Dock() {
   ] as const;
   return (
     <div className="flex h-full min-h-0 flex-col border-l border-border bg-panel" data-testid="dock">
-      <div className="flex h-9 shrink-0 border-b border-border" role="tablist">
+      <div className="flex min-h-9 shrink-0 border-b border-border" role="tablist">
         {tabs.map(([id, label]) => (
           <button key={id} role="tab" aria-selected={tab === id} onClick={() => set({ dockTab: id })} className={cx('touch-target flex-1 border-b-2 text-[12px] font-semibold', tab === id ? 'border-accent text-text' : 'border-transparent text-muted hover:text-text')} data-testid={`dock-tab-${id}`}>
             {label}

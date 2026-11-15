@@ -33,10 +33,13 @@ export const usePlay = create<PlayState>()(() => ({ status: 'stopped', scene: nu
 
 let pendingBoot: { data: GameData; assets: Record<string, Blob>; scriptsJs: string; modules: RuntimeModuleName[] } | null = null;
 let frame: HTMLIFrameElement | null = null;
-let startWaiters: { resolve(): void; reject(e: Error): void }[] = [];
+const startWaiters: { resolve(): void; reject(e: Error): void }[] = [];
 
 function settleStart(error?: Error) {
-  for (const w of startWaiters.splice(0)) error ? w.reject(error) : w.resolve();
+  for (const w of startWaiters.splice(0)) {
+    if (error) w.reject(error);
+    else w.resolve();
+  }
 }
 
 function post(msg: WithoutSource<EditorToPlayer>) {

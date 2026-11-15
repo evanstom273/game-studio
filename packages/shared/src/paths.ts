@@ -10,6 +10,7 @@ export function normalizePath(input: string): string {
   for (const seg of raw.split('/')) {
     if (seg === '' || seg === '.') continue;
     if (seg === '..') throw new GameStudioError('E_BAD_PATH', `Path "${input}" may not contain ".."`);
+    // eslint-disable-next-line no-control-regex -- control characters are exactly what we reject
     if (/[\u0000-\u001f<>:"|?*]/.test(seg)) throw new GameStudioError('E_BAD_PATH', `Path "${input}" contains characters that are not allowed`);
     parts.push(seg);
   }

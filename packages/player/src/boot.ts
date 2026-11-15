@@ -166,7 +166,7 @@ export async function bootGame(opts: BootOptions): Promise<GameHandle> {
   try {
     root = instantiateScene(scene, instOpts, data.startScene);
   } catch (e) {
-    throw new Error(`Could not load ${data.startScene}: ${errorMessage(e)}`);
+    throw new Error(`Could not load ${data.startScene}: ${errorMessage(e)}`, { cause: e });
   }
   tree.setCurrentScene(root);
   engine.start();

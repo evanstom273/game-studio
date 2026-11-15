@@ -1,6 +1,6 @@
 /** The scene viewport: 2D or 3D (chosen from the scene, switchable for mixed scenes) plus its toolbar. */
 import { lazy, Suspense, useState } from 'react';
-import { Copy, Crosshair, Grid3x3, Magnet, Plus, Shapes, Trash2, Video } from 'lucide-react';
+import { Copy, Crosshair, Magnet, Plus, Shapes, Trash2, Video } from 'lucide-react';
 import { nodeTypes, walkDoc } from '@gs/core';
 import { useEditor } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
@@ -37,7 +37,7 @@ export default function Viewport({ scenePath }: { scenePath: string }) {
   const compact = layout.mode === 'compact';
   return (
     <div className="flex h-full flex-col" data-testid="viewport" data-mode={mode}>
-      <div className="flex h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-panel px-1">
+      <div className="flex min-h-9 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-panel px-1">
         <div className="flex rounded border border-border p-0.5" role="radiogroup" aria-label="Viewport">
           {(['2d', '3d'] as const).map((m) => (
             <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)} className={cx('touch-target rounded px-2 text-[11px] font-semibold', mode === m ? 'bg-accent text-white' : 'text-muted hover:text-text')} data-testid={`mode-${m}`}>
@@ -69,7 +69,6 @@ export default function Viewport({ scenePath }: { scenePath: string }) {
             ))}
           </select>
         )}
-        <Grid3x3 size={0} className="hidden" />
         <div className="flex-1" />
         {!compact && (
           <IconButton label="Add node (Ctrl+A)" onClick={() => ui.set({ dialog: 'add-node' })} data-testid="viewport-add-node">

@@ -181,6 +181,7 @@ export class Node {
   /** Path from the tree root, e.g. "/root/Main/Player". */
   getPath(): string {
     const parts: string[] = [];
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- walking up from this node
     for (let n: Node | null = this; n; n = n._parent) parts.unshift(n._name);
     return '/' + parts.join('/');
   }
@@ -196,6 +197,7 @@ export class Node {
   }
 
   getNodeOrNull<T extends Node = Node>(path: string): T | null {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- path walk starts here
     let cur: Node | null = this;
     let parts = path.split('/');
     if (path.startsWith('/')) {
@@ -245,6 +247,7 @@ export class Node {
   }
 
   private root(): Node {
+    // eslint-disable-next-line @typescript-eslint/no-this-alias -- walking up to the root
     let n: Node = this;
     while (n._parent) n = n._parent;
     return n;

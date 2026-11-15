@@ -16,7 +16,7 @@
  */
 import { build, type Plugin as EsbuildPlugin } from 'esbuild';
 import type { Plugin } from 'vite';
-import { aliases } from '../../../aliases';
+import { aliases } from '../../../aliases.ts';
 
 export const RUNTIME_BUNDLES: Record<string, { entry: string; shared: boolean }> = {
   'gs-runtime.js': { entry: 'packages/player/src/entry-runtime.ts', shared: false },

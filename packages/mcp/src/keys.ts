@@ -1,5 +1,5 @@
 /** Link keys: the secret that ties an AI app to an editor tab. */
-import { LINK_KEY_RE } from './protocol';
+import { LINK_KEY_RE } from './protocol.ts';
 
 /** Durable Object / relay room name for a key: its SHA-256, so the key itself is never stored. */
 export async function roomName(key: string) {
