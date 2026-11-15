@@ -24,6 +24,8 @@ export function requiredModules(scenes: Record<string, SceneDoc>, registry: Node
       if (dim === '2d') need.add('render2d');
       if (dim === '3d' || n.type === 'WorldEnvironment') need.add('render3d');
       if (info.category === 'Physics 2D') need.add('physics2d');
+      // Tile maps collide through the 2D physics server unless collision is switched off.
+      if (registry.isA(n.type, 'TileMapLayer') && n.props?.collisionEnabled !== false) need.add('physics2d');
       if (info.category === 'Physics 3D') need.add('physics3d');
     });
   }

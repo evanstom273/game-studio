@@ -1,5 +1,53 @@
 /** Node type icons, coloured by family like Godot (2D blue, 3D red, audio amber, core grey). */
-import { Box, Circle, Film, Flashlight, Globe, Hexagon, Image, Lightbulb, Move, Move3d, PersonStanding, Scan, Shapes, Square, SquareDashed, Sun, Timer, Type, Video, Volume2, type LucideIcon } from 'lucide-react';
+import {
+  AudioLines,
+  Box,
+  CaseSensitive,
+  Circle,
+  Clapperboard,
+  Columns3,
+  Contrast,
+  Crosshair,
+  Film,
+  Flashlight,
+  Frame,
+  Globe,
+  Grid3x3,
+  Hexagon,
+  Image,
+  Lamp,
+  Layers,
+  Lightbulb,
+  Mountain,
+  MousePointerClick,
+  Move,
+  Move3d,
+  MoveHorizontal,
+  Navigation,
+  PaintBucket,
+  PanelTop,
+  PersonStanding,
+  Radar,
+  RectangleHorizontal,
+  Route,
+  Rows3,
+  Scaling,
+  Scan,
+  ScanEye,
+  Shapes,
+  Sparkles,
+  Speaker,
+  Spline,
+  Square,
+  SquareDashed,
+  SquareDashedMousePointer,
+  Sun,
+  Timer,
+  Type,
+  Video,
+  Volume2,
+  type LucideIcon,
+} from 'lucide-react';
 import { nodeTypes } from '@gs/core';
 import { cx } from './primitives';
 
@@ -25,12 +73,39 @@ const ICONS: Record<string, LucideIcon> = {
   globe: Globe,
   timer: Timer,
   'volume-2': Volume2,
+  layers: Layers,
+  crosshair: Crosshair,
+  spline: Spline,
+  route: Route,
+  navigation: Navigation,
+  sparkles: Sparkles,
+  contrast: Contrast,
+  lamp: Lamp,
+  mountain: Mountain,
+  'scan-eye': ScanEye,
+  'grid-3x3': Grid3x3,
+  'move-horizontal': MoveHorizontal,
+  radar: Radar,
+  'square-dashed-mouse-pointer': SquareDashedMousePointer,
+  'paint-bucket': PaintBucket,
+  'panel-top': PanelTop,
+  'case-sensitive': CaseSensitive,
+  'mouse-pointer-click': MousePointerClick,
+  'rectangle-horizontal': RectangleHorizontal,
+  frame: Frame,
+  'columns-3': Columns3,
+  'rows-3': Rows3,
+  scaling: Scaling,
+  'audio-lines': AudioLines,
+  speaker: Speaker,
+  clapperboard: Clapperboard,
 };
 
 export function nodeColorClass(type: string) {
   const info = nodeTypes.get(type);
   if (!info) return 'text-faint';
   if (info.category === 'Audio') return 'text-node-audio';
+  if (info.category === 'UI') return 'text-node-ui';
   const dim = nodeTypes.dimension(type);
   return dim === '2d' ? 'text-node-2d' : dim === '3d' ? 'text-node-3d' : 'text-node-core';
 }

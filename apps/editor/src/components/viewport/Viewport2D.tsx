@@ -8,7 +8,7 @@
  */
 import { useEffect, useRef } from 'react';
 import { Transform2D, Vector2, degToRad, errorMessage } from '@gs/shared';
-import { Camera2D, CollisionShape2D, Node2D } from '@gs/core';
+import { AudioStreamPlayer2D, CPUParticles2D, Camera2D, CollisionShape2D, Control, Marker2D, Node2D, Parallax2D, Path2D, PointLight2D, RayCast2D, TileMapLayer, VisibleOnScreenNotifier2D, type Node } from '@gs/core';
 import { Renderer2D } from '@gs/render2d';
 import { useEditor } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
@@ -16,6 +16,7 @@ import { toast } from '@editor/store/toasts';
 import { assetUrl } from '@editor/services/assets';
 import { LiveScene } from './live-scene';
 import { viewportEvents } from './Viewport';
+import { TilePalette, selectedTileMap, useTilePaint } from './TilePalette';
 
 const HANDLE = 7;
 
@@ -24,8 +25,8 @@ interface Drag {
   start: Vector2;
   last: Vector2;
   ids: string[];
-  /** Per node: start global position, local rotation, scale. */
-  starts: Map<string, { global: Vector2; rotation: number; scale: Vector2 }>;
+  /** Per node: start global position, local position, local rotation, scale. */
+  starts: Map<string, { global: Vector2; local: Vector2; rotation: number; scale: Vector2 }>;
   pivot: Vector2;
   session: number;
   moved: boolean;
@@ -33,6 +34,38 @@ interface Drag {
 
 let sessionSeq = 0;
 const round = (n: number) => Math.round(n * 100) / 100;
+
+/** A node's transform into the editor's world: CanvasLayer content sits at the world origin, offset by the layer. */
+const canvasXf = (n: Node2D): Transform2D => {
+  const layer = n.getCanvasLayer();
+  return layer ? layer.transform.multiply(n.globalTransform) : n.globalTransform;
+};
+
+/** Cells on the line between two map cells (so fast strokes don't skip tiles). */
+function cellLine(a: Vector2, b: Vector2): Vector2[] {
+  const out: Vector2[] = [];
+  let x = a.x;
+  let y = a.y;
+  const dx = Math.abs(b.x - x);
+  const dy = -Math.abs(b.y - y);
+  const sx = x < b.x ? 1 : -1;
+  const sy = y < b.y ? 1 : -1;
+  let err = dx + dy;
+  for (let guard = 0; guard < 4096; guard++) {
+    out.push(new Vector2(x, y));
+    if (x === b.x && y === b.y) break;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+  }
+  return out;
+}
 
 export default function Viewport2D({ scenePath }: { scenePath: string }) {
   const host = useRef<HTMLDivElement>(null);
@@ -56,6 +89,9 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
     let spaceDown = false;
     const pointers = new Map<number, Vector2>();
     let pinch: { dist: number; zoom: number; mid: Vector2; center: Vector2 } | null = null;
+    /** Tile painting stroke in progress. */
+    let stroke: { session: number; erase: boolean; last: Vector2 | null; cells: Map<string, [number, number] | null> } | null = null;
+    let lastDraw = 0;
 
     const schedule = () => {
       if (!raf) raf = requestAnimationFrame(draw);
@@ -132,16 +168,18 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       live.root?.walk((n) => {
         if (n instanceof Node2D && n.isVisibleInTree()) list.push(n);
       });
-      list.sort((a, b) => a.globalZIndex - b.globalZIndex);
+      // Canvas layers draw above the world, in layer order.
+      const layerOf = (n: Node2D) => n.getCanvasLayer()?.layer ?? 0;
+      list.sort((a, b) => layerOf(a) - layerOf(b) || a.globalZIndex - b.globalZIndex);
       const world = toWorld(p);
       for (let i = list.length - 1; i >= 0; i--) {
         const n = list[i];
         if (n instanceof CollisionShape2D && !useUi.getState().showShapes) continue;
         const b = boundsOf(n);
         if (b) {
-          const lp = n.globalTransform.invert().apply(world);
+          const lp = canvasXf(n).invert().apply(world);
           if (lp.x >= b.x && lp.x <= b.x + b.w && lp.y >= b.y && lp.y <= b.y + b.h) return n;
-        } else if (toScreen(n.globalPosition).distanceTo(p) < 10) return n;
+        } else if (toScreen(canvasXf(n).origin).distanceTo(p) < 10) return n;
       }
       return null;
     };
@@ -149,7 +187,7 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       const sel = selectedNodes();
       if (sel.length !== 1) return null;
       const tool = useUi.getState().tool;
-      const o = toScreen(sel[0].globalPosition);
+      const o = toScreen(canvasXf(sel[0]).origin);
       const touchPad = matchMedia('(pointer: coarse)').matches ? 10 : 0;
       if (tool === 'move' || tool === 'select') {
         if (Math.abs(p.y - o.y) < HANDLE + touchPad && p.x > o.x + 12 && p.x < o.x + 60 + touchPad) return 'axis-x';
@@ -173,9 +211,13 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
           let delta = toWorld(drag!.last).sub(toWorld(drag!.start));
           if (drag!.kind === 'axis-x') delta = new Vector2(delta.x, 0);
           if (drag!.kind === 'axis-y') delta = new Vector2(0, delta.y);
+          // Into the node's canvas (CanvasLayers can be offset and scaled).
+          const layer = n.getCanvasLayer();
+          if (layer) delta = layer.transform.invert().applyVector(delta);
           let g = st.global.add(delta);
           if (ui.snap) g = new Vector2(Math.round(g.x / ui.gridSize) * ui.gridSize, Math.round(g.y / ui.gridSize) * ui.gridSize);
-          const l = parent.invert().apply(g);
+          // Move by the difference: anchored controls aren't placed by their position directly.
+          const l = st.local.add(parent.invert().applyVector(g.sub(st.global)));
           props.position = [round(l.x), round(l.y)];
         } else if (drag!.kind === 'rotate') {
           const o = drag!.pivot;
@@ -201,6 +243,54 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       }
     };
 
+    // --- tile painting ---------------------------------------------------------------------------------------
+    let hover: Vector2 | null = null;
+    /** The selected TileMapLayer while the paint tool is on. */
+    const paintTarget = (): TileMapLayer | null => {
+      if (!useTilePaint.getState().painting) return null;
+      const sel = selectedTileMap();
+      const n = sel ? live.node(sel.node.id) : null;
+      return n instanceof TileMapLayer ? n : null;
+    };
+    const cellAt = (n: TileMapLayer, p: Vector2) => n.localToMap(canvasXf(n).invert().apply(toWorld(p)));
+    const paintAt = (n: TileMapLayer, p: Vector2) => {
+      if (!stroke) return;
+      const cell = cellAt(n, p);
+      const path = stroke.last ? cellLine(stroke.last, cell) : [cell];
+      stroke.last = cell;
+      const atlas = useTilePaint.getState().atlas;
+      let changed = false;
+      for (const c of path) {
+        const want: [number, number] | null = stroke.erase ? null : [atlas[0], atlas[1]];
+        const cur = n.getCell(c);
+        if ((want === null && cur === null) || (want && cur && cur.x === want[0] && cur.y === want[1])) continue;
+        stroke.cells.set(`${c.x},${c.y}`, want);
+        changed = true;
+      }
+      if (!changed) return;
+      const sel = selectedTileMap();
+      if (!sel) return;
+      // Apply the stroke to the stored cells (one undo step per stroke).
+      const cells = new Map<string, [number, number]>();
+      const stored = (sel.node.props?.cells as number[] | undefined) ?? [];
+      for (let i = 0; i + 3 < stored.length; i += 4) cells.set(`${stored[i]},${stored[i + 1]}`, [stored[i + 2], stored[i + 3]]);
+      for (const [k, v] of stroke.cells) {
+        if (v) cells.set(k, v);
+        else cells.delete(k);
+      }
+      const flat: number[] = [];
+      for (const [k, v] of cells) {
+        const [x, y] = k.split(',').map(Number);
+        flat.push(x, y, v[0], v[1]);
+      }
+      try {
+        useEditor.getState().dispatch([{ op: 'set_props', scene: sel.scenePath, node: sel.node.id, props: { cells: flat } }], { label: stroke.erase ? 'Erase tiles' : 'Paint tiles', mergeKey: `tiles:${stroke.session}` });
+      } catch (err) {
+        toast('error', errorMessage(err));
+        stroke = null;
+      }
+    };
+
     // --- pointer handling ----------------------------------------------------------------------------------
     const onDown = (e: PointerEvent) => {
       el.setPointerCapture(e.pointerId);
@@ -215,6 +305,13 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
         return;
       }
       if (pointers.size > 2) return;
+      const tiles = paintTarget();
+      if (tiles && (e.button === 0 || e.button === 2) && !spaceDown) {
+        const tool = useTilePaint.getState();
+        stroke = { session: ++sessionSeq, erase: tool.erase || e.button === 2, last: null, cells: new Map() };
+        paintAt(tiles, p);
+        return;
+      }
       const panButton = e.button === 1 || e.button === 2 || spaceDown;
       if (panButton) {
         drag = { kind: 'pan', start: p, last: p, ids: [], starts: new Map(), pivot: new Vector2(), session: ++sessionSeq, moved: false };
@@ -235,15 +332,15 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
           return;
         }
       }
-      const starts = new Map<string, { global: Vector2; rotation: number; scale: Vector2 }>();
+      const starts = new Map<string, { global: Vector2; local: Vector2; rotation: number; scale: Vector2 }>();
       for (const id of ids) {
         const n = live.node(id);
-        if (n instanceof Node2D && n !== live.root) starts.set(id, { global: n.globalPosition, rotation: n.rotation, scale: n.scale.clone() });
+        if (n instanceof Node2D && n !== live.root) starts.set(id, { global: n.globalPosition, local: n.position.clone(), rotation: n.rotation, scale: n.scale.clone() });
       }
       if (!starts.size) return;
       const kind: Drag['kind'] = handle ?? (tool === 'rotate' ? 'rotate' : tool === 'scale' ? 'scale' : 'move');
       const first = live.node([...starts.keys()][0]) as Node2D;
-      drag = { kind, start: p, last: p, ids: [...starts.keys()], starts, pivot: first.globalPosition, session: ++sessionSeq, moved: false };
+      drag = { kind, start: p, last: p, ids: [...starts.keys()], starts, pivot: canvasXf(first).origin, session: ++sessionSeq, moved: false };
     };
     const onMove = (e: PointerEvent) => {
       const p = local(e);
@@ -257,8 +354,16 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
         schedule();
         return;
       }
+      if (stroke) {
+        const tiles = paintTarget();
+        if (tiles) paintAt(tiles, p);
+        return;
+      }
       if (!drag) {
-        el.style.cursor = handleAt(p) ? 'grab' : 'default';
+        const painting = !!paintTarget();
+        el.style.cursor = painting ? 'crosshair' : handleAt(p) ? 'grab' : 'default';
+        hover = p;
+        if (painting) schedule();
         return;
       }
       if (!drag.moved && drag.start.distanceTo(p) < 3) return;
@@ -275,6 +380,10 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
     const onUp = (e: PointerEvent) => {
       pointers.delete(e.pointerId);
       if (pointers.size < 2) pinch = null;
+      if (stroke) {
+        stroke = null;
+        return;
+      }
       if (!drag) return;
       if (drag.kind === 'pan' && !drag.moved && e.button === 0) useEditor.getState().select([]);
       else if (drag.kind !== 'pan' && drag.moved) commitTransforms(true);
@@ -301,7 +410,7 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
     };
     const frame = () => {
       const sel = selectedNodes();
-      if (sel.length) view.center = sel[0].globalPosition;
+      if (sel.length) view.center = canvasXf(sel[0]).origin;
       else fit();
       schedule();
     };
@@ -319,6 +428,19 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
     function draw() {
       raf = 0;
       if (!renderer) return;
+      // Particles preview in the editor (the live scene has no tree, so nothing else advances them).
+      const now = performance.now();
+      const dt = lastDraw ? Math.min(0.05, (now - lastDraw) / 1000) : 1 / 60;
+      lastDraw = now;
+      let animating = false;
+      live.root?.walk((n) => {
+        if (n instanceof CPUParticles2D && n.isVisibleInTree() && (n.emitting || n.getParticleCount() > 0)) {
+          n.simulate(dt);
+          animating = true;
+        }
+      });
+      if (animating) schedule();
+      else lastDraw = 0;
       renderer.showCollisionShapes = useUi.getState().showShapes;
       renderer.editorView = view;
       renderer.render();
@@ -348,9 +470,147 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
           ctx.setLineDash([]);
         }
       });
+      drawHelpers(ctx);
       const sel = selectedNodes();
       for (const n of sel) drawSelection(ctx, n);
-      if (sel.length === 1) drawHandles(ctx, sel[0]);
+      if (sel.length === 1 && !paintTarget()) drawHandles(ctx, sel[0]);
+    }
+
+    /** Editor-only drawings: markers, paths, rays, light radii, notifier rects, control frames, tile grids. */
+    function drawHelpers(ctx: CanvasRenderingContext2D) {
+      const selected = new Set(useEditor.getState().selection);
+      const isSel = (n: Node) => {
+        const id = live.docId(n);
+        return !!id && selected.has(id) && live.node(id) === n;
+      };
+      const poly = (t: Transform2D, pts: Vector2[], close: boolean) => {
+        ctx.beginPath();
+        pts.forEach((q, i) => {
+          const s = toScreen(t.apply(q));
+          if (i) ctx.lineTo(s.x, s.y);
+          else ctx.moveTo(s.x, s.y);
+        });
+        if (close) ctx.closePath();
+        ctx.stroke();
+      };
+      const circle = (t: Transform2D, r: number) => {
+        const c = toScreen(t.origin);
+        const k = t.scale;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, Math.max(1, r * Math.max(Math.abs(k.x), Math.abs(k.y)) * view.zoom), 0, Math.PI * 2);
+        ctx.stroke();
+      };
+      const rect = (t: Transform2D, x: number, y: number, w: number, h: number) => poly(t, [new Vector2(x, y), new Vector2(x + w, y), new Vector2(x + w, y + h), new Vector2(x, y + h)], true);
+      live.root?.walk((n) => {
+        if (!(n instanceof Node2D) || !n.isVisibleInTree()) return;
+        const t = canvasXf(n);
+        const sel = isSel(n);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        if (n instanceof Marker2D) {
+          const e = n.gizmoExtents;
+          ctx.strokeStyle = sel ? '#f5a524' : 'rgba(248,113,113,0.95)';
+          poly(t, [new Vector2(-e, 0), new Vector2(e, 0)], false);
+          ctx.strokeStyle = sel ? '#f5a524' : 'rgba(74,222,128,0.95)';
+          poly(t, [new Vector2(0, -e), new Vector2(0, e)], false);
+        } else if (n instanceof Path2D) {
+          const pts = n.getCurve().points.map((q) => new Vector2(q[0], q[1]));
+          ctx.strokeStyle = 'rgba(125,211,252,0.9)';
+          ctx.lineWidth = 2;
+          poly(t, pts, false);
+          ctx.fillStyle = '#7dd3fc';
+          for (const q of n.points) {
+            const s = toScreen(t.apply(q));
+            ctx.fillRect(s.x - 3, s.y - 3, 6, 6);
+          }
+        } else if (n instanceof RayCast2D) {
+          const a = toScreen(t.origin);
+          const b = toScreen(t.apply(n.targetPosition));
+          ctx.strokeStyle = n.enabled ? 'rgba(251,146,60,0.95)' : 'rgba(139,147,164,0.8)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          const ang = Math.atan2(b.y - a.y, b.x - a.x);
+          ctx.moveTo(b.x, b.y);
+          ctx.lineTo(b.x - Math.cos(ang - 0.4) * 9, b.y - Math.sin(ang - 0.4) * 9);
+          ctx.moveTo(b.x, b.y);
+          ctx.lineTo(b.x - Math.cos(ang + 0.4) * 9, b.y - Math.sin(ang + 0.4) * 9);
+          ctx.stroke();
+        } else if (n instanceof VisibleOnScreenNotifier2D) {
+          ctx.strokeStyle = 'rgba(232,121,249,0.85)';
+          const r = n.rect;
+          rect(t, r.x, r.y, r.width, r.height);
+        } else if (n instanceof PointLight2D && sel) {
+          ctx.strokeStyle = 'rgba(253,224,71,0.8)';
+          ctx.setLineDash([5, 4]);
+          circle(t, n.radius);
+        } else if (n instanceof AudioStreamPlayer2D && sel) {
+          ctx.strokeStyle = 'rgba(245,196,107,0.7)';
+          ctx.setLineDash([5, 4]);
+          circle(t, n.maxDistance);
+        } else if (n instanceof CPUParticles2D && sel && n.emissionShape !== 'point') {
+          ctx.strokeStyle = 'rgba(167,139,250,0.85)';
+          ctx.setLineDash([4, 3]);
+          if (n.emissionShape === 'sphere') circle(t, n.emissionSphereRadius);
+          else rect(t, -n.emissionRectExtents.x, -n.emissionRectExtents.y, n.emissionRectExtents.x * 2, n.emissionRectExtents.y * 2);
+        } else if (n instanceof Parallax2D && sel && (n.repeatSize.x > 0 || n.repeatSize.y > 0)) {
+          ctx.strokeStyle = 'rgba(141,165,243,0.7)';
+          ctx.setLineDash([6, 4]);
+          rect(t, 0, 0, n.repeatSize.x || 64, n.repeatSize.y || 64);
+        } else if (n instanceof Control) {
+          // Frames for controls that draw nothing themselves (containers, plain Controls).
+          const s = n.getSize();
+          if (sel || n.typeName === 'Control' || /Container$/.test(n.typeName)) {
+            ctx.strokeStyle = sel ? 'rgba(142,239,151,0.9)' : 'rgba(142,239,151,0.35)';
+            ctx.setLineDash([4, 3]);
+            rect(t, 0, 0, s.x, s.y);
+          }
+        } else if (n instanceof TileMapLayer && sel) {
+          drawTileGrid(ctx, n, t);
+        }
+      });
+      ctx.setLineDash([]);
+    }
+
+    function drawTileGrid(ctx: CanvasRenderingContext2D, n: TileMapLayer, t: Transform2D) {
+      const { x: tw, y: th } = n.tileSize;
+      if (tw * view.zoom < 4 || th * view.zoom < 4) return;
+      // The visible part of the layer, in cells.
+      const inv = t.invert();
+      const corners = [new Vector2(0, 0), new Vector2(el.clientWidth, 0), new Vector2(0, el.clientHeight), new Vector2(el.clientWidth, el.clientHeight)].map((c) => inv.apply(toWorld(c)));
+      const x0 = Math.floor(Math.min(...corners.map((c) => c.x)) / tw);
+      const x1 = Math.ceil(Math.max(...corners.map((c) => c.x)) / tw);
+      const y0 = Math.floor(Math.min(...corners.map((c) => c.y)) / th);
+      const y1 = Math.ceil(Math.max(...corners.map((c) => c.y)) / th);
+      if ((x1 - x0) * (y1 - y0) > 40000) return;
+      ctx.strokeStyle = 'rgba(245,165,36,0.18)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = x0; x <= x1; x++) {
+        const a = toScreen(t.apply(new Vector2(x * tw, y0 * th)));
+        const b = toScreen(t.apply(new Vector2(x * tw, y1 * th)));
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      for (let y = y0; y <= y1; y++) {
+        const a = toScreen(t.apply(new Vector2(x0 * tw, y * th)));
+        const b = toScreen(t.apply(new Vector2(x1 * tw, y * th)));
+        ctx.moveTo(a.x, a.y);
+        ctx.lineTo(b.x, b.y);
+      }
+      ctx.stroke();
+      // The cell under the pointer while painting.
+      if (hover && paintTarget() === n) {
+        const c = cellAt(n, hover);
+        const pts = [new Vector2(c.x * tw, c.y * th), new Vector2((c.x + 1) * tw, c.y * th), new Vector2((c.x + 1) * tw, (c.y + 1) * th), new Vector2(c.x * tw, (c.y + 1) * th)].map((q) => toScreen(t.apply(q)));
+        ctx.strokeStyle = useTilePaint.getState().erase ? '#f87171' : '#f5a524';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        pts.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        ctx.closePath();
+        ctx.stroke();
+      }
     }
 
     function drawGrid(ctx: CanvasRenderingContext2D) {
@@ -392,14 +652,14 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       ctx.strokeStyle = '#f5a524';
       ctx.lineWidth = 1.5;
       if (b) {
-        const t = n.globalTransform;
+        const t = canvasXf(n);
         const corners = [new Vector2(b.x, b.y), new Vector2(b.x + b.w, b.y), new Vector2(b.x + b.w, b.y + b.h), new Vector2(b.x, b.y + b.h)].map((c) => toScreen(t.apply(c)));
         ctx.beginPath();
         corners.forEach((c, i) => (i ? ctx.lineTo(c.x, c.y) : ctx.moveTo(c.x, c.y)));
         ctx.closePath();
         ctx.stroke();
       }
-      const o = toScreen(n.globalPosition);
+      const o = toScreen(canvasXf(n).origin);
       ctx.beginPath();
       ctx.arc(o.x, o.y, 3.5, 0, Math.PI * 2);
       ctx.fillStyle = '#f5a524';
@@ -408,7 +668,7 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
 
     function drawHandles(ctx: CanvasRenderingContext2D, n: Node2D) {
       const tool = useUi.getState().tool;
-      const o = toScreen(n.globalPosition);
+      const o = toScreen(canvasXf(n).origin);
       ctx.lineWidth = 2.5;
       if (tool === 'move' || tool === 'select') {
         ctx.strokeStyle = '#f87171';
@@ -438,7 +698,7 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
         ctx.beginPath();
         ctx.arc(o.x, o.y, 46, 0, Math.PI * 2);
         ctx.stroke();
-        const a = n.globalRotation;
+        const a = canvasXf(n).rotation;
         ctx.beginPath();
         ctx.moveTo(o.x, o.y);
         ctx.lineTo(o.x + Math.cos(a) * 46, o.y + Math.sin(a) * 46);
@@ -463,12 +723,14 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       else if (s.selection !== prev.selection) schedule();
     });
     const unsubUi = useUi.subscribe(schedule);
+    const unsubPaint = useTilePaint.subscribe(schedule);
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
       ro.disconnect();
       unsubEditor();
       unsubUi();
+      unsubPaint();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKey);
       viewportEvents.removeEventListener('frame', frame);
@@ -479,6 +741,8 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
   }, [scenePath]);
 
   return (
-    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-2d" />
+    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-2d">
+      <TilePalette />
+    </div>
   );
 }

@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Plus, Trash2, Upload } from 'lucide-react';
 import { degToRad, radToDeg, parseHexColor, type Json } from '@gs/shared';
-import { DEFAULT_MATERIAL, type MaterialData, type PropDef } from '@gs/core';
+import { DEFAULT_MATERIAL, validatePropValue, type MaterialData, type PropDef } from '@gs/core';
 import { useEditor } from '@editor/store/editor';
 import { pickFiles } from '@editor/lib/files';
 import { IMPORT_ACCEPT, importFiles } from '@editor/services/assets';
@@ -252,7 +252,8 @@ export function MaterialField({ value, onChange }: { value: MaterialData | null;
   );
 }
 
-export function PointsField({ value, onChange }: { value: number[][]; onChange: Change }) {
+export function PointsField({ value, onChange, n = 2, minItems = 3, step }: { value: number[][]; onChange: Change; n?: 2 | 3; minItems?: number; step?: number }) {
+  const offset = n === 3 ? 1 : 16;
   return (
     <div className="space-y-1">
       {value.map((p, i) => (
@@ -260,7 +261,8 @@ export function PointsField({ value, onChange }: { value: number[][]; onChange: 
           <span className="w-4 text-right text-[10px] text-faint">{i}</span>
           <div className="flex-1">
             <VectorField
-              n={2}
+              n={n}
+              step={step}
               value={p}
               onChange={(v, f) => {
                 const next = value.map((q) => [...q]);
@@ -269,14 +271,75 @@ export function PointsField({ value, onChange }: { value: number[][]; onChange: 
               }}
             />
           </div>
-          <IconButton label="Remove point" disabled={value.length <= 3} onClick={() => onChange(value.filter((_, j) => j !== i), true)}>
+          <IconButton label="Remove point" disabled={value.length <= minItems} onClick={() => onChange(value.filter((_, j) => j !== i), true)}>
             <Trash2 size={12} />
           </IconButton>
         </div>
       ))}
-      <button className="flex items-center gap-1 text-[12px] text-accent hover:underline" onClick={() => onChange([...value, [...(value.at(-1) ?? [0, 0])].map((x) => x + 16)], true)}>
+      <button className="flex items-center gap-1 text-[12px] text-accent hover:underline" onClick={() => onChange([...value, [...(value.at(-1) ?? new Array<number>(n).fill(0))].map((x) => x + offset)], true)}>
         <Plus size={12} /> Add point
       </button>
+    </div>
+  );
+}
+
+/** Formats a 'json' value for editing (tile cells one tile per line). */
+function formatJson(def: PropDef, value: Json): string {
+  if (def.jsonKind === 'tilecells' && Array.isArray(value)) {
+    const rows: string[] = [];
+    for (let i = 0; i < value.length; i += 4) rows.push(value.slice(i, i + 4).join(', '));
+    return rows.length ? `[\n  ${rows.join(',\n  ')}\n]` : '[]';
+  }
+  return JSON.stringify(value, null, 2);
+}
+
+const JSON_PLACEHOLDER: Record<string, string> = {
+  animations: '{ "bob": { "length": 1, "loop": true, "tracks": [ { "path": ".", "property": "position", "keys": [[0, [0, 0]], [0.5, [0, -8]], [1, [0, 0]]] } ] } }',
+  tilecells: '[x, y, atlasX, atlasY, …]',
+};
+
+/** Structured data edited as JSON; validated with the property's rules before it is applied. */
+export function JsonField({ def, value, onChange }: { def: PropDef; value: Json; onChange: Change }) {
+  const [text, setText] = useState(() => formatJson(def, value));
+  const [error, setError] = useState<string | null>(null);
+  const focused = useRef(false);
+  useEffect(() => {
+    if (!focused.current) setText(formatJson(def, value));
+  }, [def, value]);
+  const apply = () => {
+    let parsed: Json;
+    try {
+      parsed = JSON.parse(text) as Json;
+    } catch (e) {
+      setError(`Not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
+      return;
+    }
+    const problem = validatePropValue(def, parsed);
+    setError(problem);
+    if (!problem) onChange(parsed, true);
+  };
+  const count = def.jsonKind === 'tilecells' && Array.isArray(value) ? `${value.length / 4} tiles` : def.jsonKind === 'animations' && value && typeof value === 'object' && !Array.isArray(value) ? `${Object.keys(value).length} animation(s): ${Object.keys(value).join(', ') || '—'}` : null;
+  return (
+    <div className="space-y-1">
+      {count && <div className="truncate text-[11px] text-faint">{count}</div>}
+      <textarea
+        className={cx(inputCls, 'h-28 py-1 font-mono text-[11px] leading-snug', error && 'border-err')}
+        value={text}
+        spellCheck={false}
+        placeholder={JSON_PLACEHOLDER[def.jsonKind ?? ''] ?? ''}
+        onFocus={() => (focused.current = true)}
+        onChange={(e) => setText(e.target.value)}
+        onBlur={() => {
+          focused.current = false;
+          apply();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) apply();
+        }}
+        data-testid={`prop-${def.name}`}
+        aria-label={def.name}
+      />
+      {error && <div className="text-[11px] text-err">{error}</div>}
     </div>
   );
 }
@@ -340,6 +403,10 @@ export function PropField({ def, value, onChange }: { def: PropDef; value: Json;
     case 'material':
       return <MaterialField value={value as unknown as MaterialData | null} onChange={onChange} />;
     case 'vector2[]':
-      return <PointsField value={(value as number[][]) ?? []} onChange={onChange} />;
+      return <PointsField value={(value as number[][]) ?? []} onChange={onChange} minItems={def.minItems} step={def.step} />;
+    case 'vector3[]':
+      return <PointsField n={3} value={(value as number[][]) ?? []} onChange={onChange} minItems={def.minItems ?? 2} step={def.step ?? 0.1} />;
+    case 'json':
+      return <JsonField def={def} value={value} onChange={onChange} />;
   }
 }

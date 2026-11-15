@@ -60,7 +60,9 @@ function NodeInspector({ scenePath, scene, node, parentType, count }: { scenePat
   const groups = useMemo(() => {
     const out: { name: string; defs: PropDef[] }[] = [];
     for (const typeName of nodeTypes.chain(node.type).reverse()) {
-      for (const d of nodeTypes.get(typeName)!.properties) {
+      for (const own of nodeTypes.get(typeName)!.properties) {
+        // The type's version of the property (a derived type may change its default).
+        const d = nodeTypes.property(node.type, own.name) ?? own;
         const g = d.group ?? typeName;
         let entry = out.find((x) => x.name === g);
         if (!entry) out.push((entry = { name: g, defs: [] }));

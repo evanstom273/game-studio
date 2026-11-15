@@ -99,11 +99,12 @@ function template2D(): Command[] {
     { op: 'add_node', scene: s, type: 'StaticBody2D', name: 'Floor', ref: 'floor', props: { position: [576, 600] } },
     { op: 'add_node', scene: s, parent: '$floor', type: 'Polygon2D', name: 'Visual', props: { color: '#3b4357', polygon: [[-560, -24], [560, -24], [560, 24], [-560, 24]] } },
     { op: 'add_node', scene: s, parent: '$floor', type: 'CollisionShape2D', name: 'Shape', props: { shape: { type: 'rectangle', size: [1120, 48] } } },
-    { op: 'add_node', scene: s, type: 'StaticBody2D', name: 'Platform', ref: 'plat', props: { position: [860, 430] } },
+    // Jump height is v²/2g = 680²/3200 ≈ 144 px: platform tops 118 px above the floor and 110 px above each other.
+    { op: 'add_node', scene: s, type: 'StaticBody2D', name: 'Platform', ref: 'plat', props: { position: [860, 470] } },
     { op: 'add_node', scene: s, parent: '$plat', type: 'Polygon2D', name: 'Visual', props: { color: '#4f8cff', polygon: [[-120, -12], [120, -12], [120, 12], [-120, 12]] } },
     { op: 'add_node', scene: s, parent: '$plat', type: 'CollisionShape2D', name: 'Shape', props: { shape: { type: 'rectangle', size: [240, 24] } } },
     { op: 'duplicate_node', scene: s, node: '$plat', name: 'Platform', ref: 'plat2' },
-    { op: 'set_props', scene: s, node: '$plat2', props: { position: [300, 330] } },
+    { op: 'set_props', scene: s, node: '$plat2', props: { position: [420, 360] } },
     { op: 'set_main_scene', path: s },
   ];
 }
