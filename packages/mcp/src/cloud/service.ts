@@ -348,7 +348,7 @@ export class CloudService {
   private async confirmDelete(perms: Permissions, what: string) {
     if (!perms.confirmDestructive) return;
     if (!this.editor.connected()) throw new GameStudioError('E_NEEDS_CONFIRMATION', `Deleting ${what} needs the user's OK in Game Studio, which isn't open. Ask them to open it, or to switch off "Ask me before the AI deletes scenes".`);
-    let ok = false;
+    let ok: boolean;
     try {
       ok = (await this.editor.ask('confirm', { title: 'Delete?', message: `An AI assistant wants to delete ${what}. You can undo this.` }, 300_000)) === true;
     } catch (e) {
