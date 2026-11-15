@@ -106,9 +106,10 @@ function apiNodes(a: ApiMember): NodeDefinition[] {
   const keywords = [a.cls, a.name, humanize(a.name).toLowerCase()];
   if (a.kind === 'signal') return []; // presets of Connect Signal / Await Signal
   if (a.kind === 'property') {
+    const what = a.valueType ? `${a.cls} ${humanize(a.name)}` : humanize(a.name);
     const get: NodeDefinition = {
       type: `${id}.get.${snake(a.name)}`,
-      title: `Get ${humanize(a.name)}`,
+      title: `Get ${what}`,
       category: cat,
       description: `${a.cls}.${a.name}${a.description && a.description !== `${a.cls}.${a.name}` ? ` — ${a.description}` : ''}${a.options ? ` (one of: ${a.options.join(', ')})` : ''}`,
       keywords: [...keywords, 'get'],
@@ -121,7 +122,7 @@ function apiNodes(a: ApiMember): NodeDefinition[] {
     if (a.readonly) return [get];
     const set: NodeDefinition = {
       type: `${id}.set.${snake(a.name)}`,
-      title: `Set ${humanize(a.name)}`,
+      title: `Set ${what}`,
       category: cat,
       description: `Change ${a.cls}.${a.name}${a.description && a.description !== `${a.cls}.${a.name}` ? ` — ${a.description}` : ''}${a.options ? ` (one of: ${a.options.join(', ')})` : ''}`,
       keywords: [...keywords, 'set', 'change'],
@@ -144,7 +145,7 @@ function apiNodes(a: ApiMember): NodeDefinition[] {
   const callExpr = (lc: LowerContext): IRExpr => call(a.name, a.params.map(([name]) => lc.input(name)), a.kind === 'function' ? undefined : target(lc, a));
   const base = {
     type: `${id}.${snake(a.name)}`,
-    title: humanize(a.name),
+    title: a.valueType ? `${a.cls} ${humanize(a.name)}` : humanize(a.name),
     category: cat,
     description: a.description,
     keywords,

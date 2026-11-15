@@ -222,9 +222,17 @@ export function engineApi(): ApiMember[] {
   if (cache && cache.size === size) return cache.list;
   const seen = new Set<string>();
   const list: ApiMember[] = [];
-  for (const a of [...fromRegistry(), ...EXTRAS, ...fromCatalogue()]) {
+  const all = [...fromRegistry(), ...EXTRAS, ...fromCatalogue()];
+  const methods = new Set(all.filter((a) => a.kind === 'method').map((a) => `${a.cls}.${a.name}`));
+  for (const a of all) {
     const key = `${a.cls}.${a.name}.${a.kind === 'signal' ? 's' : a.kind === 'property' ? 'p' : 'm'}`;
     if (seen.has(key)) continue;
+    // A read-only property with a getter method of the same name (parent / getParent): keep the method.
+    if (a.kind === 'property' && a.readonly && methods.has(`${a.cls}.get${a.name[0].toUpperCase()}${a.name.slice(1)}`)) continue;
+    // Vector add/sub/scale have dedicated nodes with friendlier pins (nodes.ts).
+    if (a.kind === 'method' && (a.cls === 'Vector2' || a.cls === 'Vector3') && ['add', 'sub', 'scale'].includes(a.name)) continue;
+    // Get Node has a hand-written node with a type picker (gs.get_node).
+    if (a.kind === 'method' && a.cls === 'Node' && a.name === 'getNode') continue;
     seen.add(key);
     list.push(a);
   }
