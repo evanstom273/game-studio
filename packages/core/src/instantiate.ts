@@ -119,8 +119,7 @@ function construct(nd: NodeDoc, opts: InstantiateOptions): Node {
   }
   if (nd.script && opts.scripts) {
     try {
-      const cls = opts.scripts.classFor(nd.script, nd.type, opts.registry);
-      const n = new cls();
+      const n = opts.scripts.instantiate(nd.script, nd.type, opts.registry);
       n.scriptPath = nd.script;
       return n;
     } catch (e) {

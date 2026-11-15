@@ -16,6 +16,7 @@ import {
   nodeTypes,
   packScene,
   propToJson,
+  type InstantiateOptions,
   type SceneDoc,
 } from '@gs/core';
 
@@ -323,12 +324,12 @@ describe('scenes', () => {
       }
     }
     scripts.register('scripts/hud.ts', Hud);
-    const resources = new ResourceLoader(
+    const resources: ResourceLoader = new ResourceLoader(
       { asset: (p) => (p === 'art/enemy.png' ? { path: p, kind: 'image', mime: 'image/png', size: 1, hash: 'x', width: 32, height: 16 } : undefined), scene: (p) => scenes[p] },
       (ps) => instantiateScene(ps.doc, opts, ps.resourcePath),
     );
     const problems: string[] = [];
-    const opts = { registry: nodeTypes, scripts, resources, scene: (p: string) => scenes[p], onProblem: (m: string) => problems.push(m) };
+    const opts: InstantiateOptions = { registry: nodeTypes, scripts, resources, scene: (p: string) => scenes[p], onProblem: (m: string) => problems.push(m) };
     return { opts, scripts, resources, problems };
   }
 
@@ -361,12 +362,28 @@ describe('scenes', () => {
     expect(hud.scriptPath).toBe('scripts/hud.ts');
   });
 
-  it('reports a script attached to the wrong type and still builds the node', () => {
+  it('lets a script extend an ancestor of the node type (like Godot)', () => {
     const { opts, problems } = setup();
-    const doc: SceneDoc = { root: { id: 'r', name: 'R', type: 'Sprite2D', script: 'scripts/hud.ts' } };
+    const doc: SceneDoc = { root: { id: 'r', name: 'R', type: 'Sprite2D', script: 'scripts/hud.ts', props: { texture: 'art/enemy.png' }, scriptProps: { label: 'X' } } };
+    const n = instantiateScene(doc, opts) as Sprite2D & { label: string; onTick(): void; ticks: number };
+    expect(n).toBeInstanceOf(Sprite2D);
+    expect(n.typeName).toBe('Sprite2D');
+    expect(n.texture?.width).toBe(32);
+    expect(n.centered).toBe(true);
+    expect(n.label).toBe('X');
+    n.onTick();
+    expect(n.ticks).toBe(1);
+    expect(problems).toEqual([]);
+  });
+
+  it('reports a script whose base is not an ancestor of the node type and still builds the node', () => {
+    const { opts, scripts, problems } = setup();
+    class Spin extends Node3D {}
+    scripts.register('scripts/spin.ts', Spin);
+    const doc: SceneDoc = { root: { id: 'r', name: 'R', type: 'Sprite2D', script: 'scripts/spin.ts' } };
     const n = instantiateScene(doc, opts);
     expect(n).toBeInstanceOf(Sprite2D);
-    expect(problems[0]).toMatch(/extends Node, but it is attached to a Sprite2D/);
+    expect(problems[0]).toMatch(/extends Node3D, which a Sprite2D is not/);
   });
 
   it('refuses recursive instancing', () => {

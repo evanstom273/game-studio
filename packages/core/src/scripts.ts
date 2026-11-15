@@ -80,15 +80,48 @@ export class ScriptRegistry {
     return { path, baseType: type.name, className: cls.name, exports, ...(bad.length ? { error: `Can't export ${bad.join(', ')}: give each a number, boolean, string, Vector2, Vector3 or Color initial value, or a type hint` } : {}) };
   }
 
-  /** The class to construct for a node of `type` with script `path`. Throws when they don't fit together. */
-  classFor(path: string, type: string, registry: NodeRegistry): ScriptClass {
+  private composed = new Map<string, new () => Node>();
+
+  /**
+   * Creates the node for a scene node of `type` with script `path`.
+   *
+   * As in Godot, a script may extend the node's type or any of its ancestors: a script that
+   * `extends Node3D` works on a MeshInstance3D. When the script extends an ancestor, its methods
+   * are layered on top of the node's real class, so the node keeps everything its type does.
+   */
+  instantiate(path: string, type: string, registry: NodeRegistry): Node {
     const cls = this.classes.get(path);
     if (!cls) throw new GameStudioError('E_SCRIPT', this.loadErrors.get(path) ?? `Script "${path}" was not found or failed to compile`);
-    const base = registry.require(type).ctor;
-    if (!(cls === base || cls.prototype instanceof base)) {
-      const actual = registry.typeOfClass(cls)?.name ?? 'something else';
-      throw new GameStudioError('E_SCRIPT', `Script "${path}" extends ${actual}, but it is attached to a ${type}. Change the script to extend ${type}, or change the node's type to ${actual}.`);
+    const nodeCtor = registry.require(type).ctor;
+    if (cls === nodeCtor || cls.prototype instanceof nodeCtor) return new cls();
+    const scriptBase = registry.typeOfClass(cls);
+    if (!scriptBase || !(nodeCtor === scriptBase.ctor || nodeCtor.prototype instanceof scriptBase.ctor)) {
+      throw new GameStudioError('E_SCRIPT', `Script "${path}" extends ${scriptBase?.name ?? 'something that is not a node'}, which a ${type} is not. Change the script to extend ${type} (or one of its base types), or change the node's type.`);
     }
-    return cls;
+    const key = `${path}|${type}`;
+    let Composite = this.composed.get(key);
+    if (!Composite) {
+      // Script classes between the script and its registered base, base-most first.
+      const layers: (new () => Node)[] = [];
+      for (let c: unknown = cls; c && c !== scriptBase.ctor; c = Object.getPrototypeOf(c)) layers.unshift(c as new () => Node);
+      let proto: object = nodeCtor.prototype;
+      for (const layer of layers) {
+        const next = Object.create(proto);
+        for (const key of Reflect.ownKeys(layer.prototype)) {
+          if (key === 'constructor') continue;
+          Object.defineProperty(next, key, Object.getOwnPropertyDescriptor(layer.prototype, key)!);
+        }
+        proto = next;
+      }
+      const C = function () {} as unknown as new () => Node;
+      C.prototype = proto as Node;
+      this.composed.set(key, (Composite = C));
+    }
+    // Runs the script's constructor chain (its field initialisers) with the composite prototype…
+    const node = Reflect.construct(cls, [], Composite) as Node;
+    // …then adds the fields of the node's own type that the script's chain didn't create.
+    const defaults = new nodeCtor() as unknown as Record<string, unknown>;
+    for (const k of Object.keys(defaults)) if (!Object.prototype.hasOwnProperty.call(node, k)) (node as unknown as Record<string, unknown>)[k] = defaults[k];
+    return node;
   }
 }
