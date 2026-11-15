@@ -18,6 +18,7 @@ export default defineConfig({
     mcpDevRelay(),
     VitePWA({
       registerType: 'autoUpdate',
+      injectRegister: false,
       includeAssets: ['favicon.svg', 'icon-192.png', 'icon-512.png'],
       manifest: {
         name: 'Game Studio',
