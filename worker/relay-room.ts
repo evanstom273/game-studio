@@ -70,6 +70,7 @@ export class RelayRoom extends DurableObject<Env> {
     }
     if (url.pathname === '/mcp') return this.room.mcp(request);
     if (url.pathname.startsWith('/sync/')) return this.room.sync(request, url.pathname.slice('/sync'.length));
+    if (url.pathname.startsWith('/github/')) return this.room.github(request, url.pathname.slice('/github'.length));
     return new Response('Not found', { status: 404 });
   }
 

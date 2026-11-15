@@ -7,6 +7,8 @@
  *  - /bridge/<key>: the editor tab's WebSocket.
  *
  *  - /sync/<key>/...: the editor's sync API (same origin only).
+ *  - /github/<key>/...: the editor's GitHub access — token, REST proxy, Cloudflare deploy
+ *    credentials (same origin only). Tokens stay in the Durable Object.
  *
  * Each key maps to one Durable Object (named by the key's SHA-256) holding the cloud copy of that
  * user's projects: AI assistants edit it with no editor open, and editors sync with it. Without the
@@ -51,6 +53,14 @@ export default {
       // Only the editor served by this site may sync.
       if (request.headers.get('origin') && request.headers.get('origin') !== url.origin) return json(403, { error: 'Origin not allowed' });
       return (await room(env, sync[1])).fetch(new Request(new URL(`/sync${sync[2]}`, url), request));
+    }
+    const github = /^\/github\/([^/]+)(\/.*)$/.exec(url.pathname);
+    if (github) {
+      if (!LINK_KEY_RE.test(github[1])) return json(404, { error: 'Unknown link' });
+      // Only the editor served by this site may use the GitHub connection.
+      if (request.headers.get('origin') && request.headers.get('origin') !== url.origin) return json(403, { error: 'Origin not allowed' });
+      if (request.headers.get('sec-fetch-site') && !['same-origin', 'none'].includes(request.headers.get('sec-fetch-site')!)) return json(403, { error: 'Origin not allowed' });
+      return (await room(env, github[1])).fetch(new Request(new URL(`/github${github[2]}${url.search}`, url), request));
     }
     const bridge = /^\/bridge\/([^/]+)\/?$/.exec(url.pathname);
     if (bridge) {

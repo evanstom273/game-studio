@@ -15,7 +15,7 @@
 import { z } from 'zod';
 import { GameStudioError, Signal, degToRad, extname, isPlainObject, jsonEqual, newId, normalizePath, type Json } from '@gs/shared';
 import { Node as CoreNode, assetKindForPath, docNodeByPath, nodeTypes, validatePropValue, walkDoc, type NodeDoc, type NodeRegistry, type PropDef, type SceneDoc } from '@gs/core';
-import { AssetInfoSchema, InputBindingSchema, LIMITS, SettingsSchema, type ProjectDoc, type ProjectSettings } from './schema';
+import { AssetInfoSchema, GitLinkSchema, InputBindingSchema, LIMITS, SceneDocSchema, SettingsSchema, type GitLink, type ProjectDoc, type ProjectSettings } from './schema';
 import { instancedScenes, resourceExists } from './validate';
 import { docChain, keepGlobalProps } from './transforms';
 
@@ -35,6 +35,8 @@ export const CommandSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('create_scene'), path: scene, rootType: z.string().default('Node2D'), rootName: z.string().optional(), ref }),
   z.object({ op: z.literal('delete_scene'), path: scene }),
   z.object({ op: z.literal('duplicate_scene'), from: scene, to: scene }),
+  // Whole-scene replacement, for changes that arrive as files (a pull from GitHub, a branch switch).
+  z.object({ op: z.literal('put_scene'), path: scene, scene: SceneDocSchema }),
   z.object({
     op: z.literal('add_node'),
     scene,
@@ -71,6 +73,7 @@ export const CommandSchema = z.discriminatedUnion('op', [
   z.object({ op: z.literal('set_input_action'), name: z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,63}$/), bindings: z.array(InputBindingSchema).max(32) }),
   z.object({ op: z.literal('remove_input_action'), name: z.string() }),
   z.object({ op: z.literal('rename_project'), name: z.string().min(1).max(LIMITS.nameLength) }),
+  z.object({ op: z.literal('set_git_link'), link: GitLinkSchema.nullable() }),
 ]);
 
 export type Command = z.input<typeof CommandSchema>;
@@ -120,6 +123,7 @@ class Draft {
   assets: ProjectDoc['assets'];
   settings: ProjectSettings;
   name: string;
+  git: GitLink | undefined;
   private ownScenes = new Set<string>();
   private ownSettings = false;
   constructor(readonly base: ProjectDoc) {
@@ -128,6 +132,7 @@ class Draft {
     this.assets = { ...base.assets };
     this.settings = base.settings;
     this.name = base.name;
+    this.git = base.git;
   }
   read(path: string): SceneDoc {
     const s = this.scenes[path];
@@ -160,7 +165,8 @@ class Draft {
     return path in this.scenes ? 'scene' : path in this.scripts ? 'script' : path in this.assets ? 'asset' : null;
   }
   asProject(): ProjectDoc {
-    return { ...this.base, name: this.name, settings: this.settings, scenes: this.scenes, scripts: this.scripts, assets: this.assets };
+    const { git: _git, ...base } = this.base;
+    return { ...base, name: this.name, settings: this.settings, scenes: this.scenes, scripts: this.scripts, assets: this.assets, ...(this.git ? { git: this.git } : {}) };
   }
 }
 
@@ -341,6 +347,23 @@ function apply(ctx: Ctx, c: ParsedCommand): CommandResult {
       if (draft.taken(to)) fail('E_EXISTS', `"${to}" already exists`);
       draft.adopt(to, structuredClone(src));
       return { op: c.op, path: to };
+    }
+    case 'put_scene': {
+      const path = scenePath(c.path);
+      const kind = draft.kindOf(path);
+      if (kind && kind !== 'scene') fail('E_EXISTS', `"${path}" is a ${kind}`);
+      if (!kind && Object.keys(draft.scenes).length >= LIMITS.scenes) fail('E_LIMIT', 'Too many scenes');
+      const doc = structuredClone(c.scene) as SceneDoc;
+      const ids = new Set<string>();
+      let count = 0;
+      walkDoc(doc.root, (n, _p, depth) => {
+        if (ids.has(n.id)) fail('E_INVALID_VALUE', `Node id "${n.id}" is used twice in ${path}`);
+        ids.add(n.id);
+        if (++count > LIMITS.nodesPerScene) fail('E_LIMIT', `A scene can have at most ${LIMITS.nodesPerScene} nodes`);
+        if (depth >= LIMITS.depth) fail('E_LIMIT', 'The tree is too deep');
+      });
+      draft.adopt(path, doc);
+      return { op: c.op, path, note: kind ? 'replaced' : 'created' };
     }
     case 'add_node': {
       const path = normalizePath(c.scene);
@@ -680,6 +703,10 @@ function apply(ctx: Ctx, c: ParsedCommand): CommandResult {
       draft.name = c.name.trim() || fail('E_BAD_NAME', 'Project names cannot be empty');
       return { op: c.op, name: draft.name };
     }
+    case 'set_git_link': {
+      draft.git = c.link ? (structuredClone(c.link) as GitLink) : undefined;
+      return { op: c.op, note: c.link ? `${c.link.owner}/${c.link.repo} @ ${c.link.branch}` : 'unlinked' };
+    }
   }
 }
 
@@ -718,10 +745,15 @@ export function applyCommands(project: ProjectDoc, commands: readonly unknown[],
   // history, autosave and change detection see "nothing happened" (no empty undo steps).
   for (const p of Object.keys(next.scenes)) if (next.scenes[p] !== project.scenes[p] && project.scenes[p] && jsonEqual(next.scenes[p], project.scenes[p])) next.scenes[p] = project.scenes[p];
   if (next.settings !== project.settings && jsonEqual(next.settings, project.settings)) next.settings = project.settings;
+  if (next.git !== project.git && jsonEqual(next.git, project.git)) {
+    if (project.git) next.git = project.git;
+    else delete next.git;
+  }
   const sameKeys = <T,>(a: Record<string, T>, b: Record<string, T>, eq: (x: T, y: T) => boolean) => Object.keys(a).length === Object.keys(b).length && Object.keys(a).every((k) => k in b && eq(a[k], b[k]));
   const unchanged =
     next.name === project.name &&
     next.settings === project.settings &&
+    next.git === project.git &&
     sameKeys(next.scenes, project.scenes, (x, y) => x === y) &&
     sameKeys(next.scripts, project.scripts, (x, y) => x === y) &&
     sameKeys(next.assets, project.assets, (x, y) => jsonEqual(x, y));

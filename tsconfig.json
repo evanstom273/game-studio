@@ -32,6 +32,7 @@
       "@gs/player": ["packages/player/src/index.ts"],
       "@gs/exporter": ["packages/exporter/src/index.ts"],
       "@gs/mcp": ["packages/mcp/src/index.ts"],
+      "@gs/git": ["packages/git/src/index.ts"],
       "@editor/*": ["apps/editor/src/*"]
     }
   },

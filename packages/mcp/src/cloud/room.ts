@@ -12,6 +12,7 @@
  *   PUT  /sync/blobs/<id>/<hash>              upload asset bytes (verified against the hash)
  *   GET  /sync/blobs/<id>/<hash>              download asset bytes
  *   PUT  /sync/settings {permissions, active} the editor's AI-connection choices
+ *   *    /github/...                          GitHub token, REST proxy, Cloudflare credentials (github-routes.ts)
  */
 import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
 import { sha256Hex, toErrorPayload } from '@gs/shared';
@@ -20,6 +21,7 @@ import { RelayCore, type RelaySocket } from '../relay.ts';
 import { buildMcpServer } from '../tools.ts';
 import { CloudStore, type KvStore, type Permissions } from './store.ts';
 import { CloudService, type CloudNotice } from './service.ts';
+import { handleGithubRoute } from './github-routes.ts';
 
 const MAX_DOC = 20 * 1024 * 1024;
 const MAX_BLOB = 50 * 1024 * 1024;
@@ -61,6 +63,11 @@ export class CloudRoom {
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     await server.connect(transport);
     return transport.handleRequest(request);
+  }
+
+  /** The editor's GitHub endpoints (token, proxy, Cloudflare). `path` is everything after /github. */
+  github(request: Request, path: string): Promise<Response> {
+    return handleGithubRoute(this.store.kv, request, path);
   }
 
   /** The editor's sync API. `path` is everything after /sync. */

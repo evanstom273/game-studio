@@ -12,7 +12,7 @@
  */
 import { create } from 'zustand';
 import { newSecret, toErrorPayload } from '@gs/shared';
-import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, type BridgeMessage, type BridgeMethod, type CloudNoticeMessage, type EditorRequest } from '@gs/mcp';
+import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, type BridgeMessage, type CloudNoticeMessage, type EditorRequest, type McpMethod } from '@gs/mcp';
 import { useEditor } from '@editor/store/editor';
 import { onSaved } from '@editor/services/autosave';
 import { handleEditorRequest } from './handlers';
@@ -191,7 +191,7 @@ function connect(takeover = false) {
   };
 }
 
-async function answer(sock: WebSocket, id: string, method: BridgeMethod | EditorRequest, params: Record<string, unknown>) {
+async function answer(sock: WebSocket, id: string, method: McpMethod | EditorRequest, params: Record<string, unknown>) {
   const t0 = performance.now();
   let reply: BridgeMessage;
   try {

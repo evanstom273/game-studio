@@ -1,6 +1,7 @@
 /**
  * The cloud side of the AI connection inside the Vite dev server, so `npm run dev` behaves like the
- * Cloudflare deployment: /mcp/<key> (AI apps), /sync/<key>/... (editor sync) and /bridge/<key>
+ * Cloudflare deployment: /mcp/<key> (AI apps), /sync/<key>/... (editor sync), /github/<key>/...
+ * (the editor's GitHub connection) and /bridge/<key>
  * (editor sockets), backed by the same CloudRoom as the Durable Object (worker/relay-room.ts).
  * The dev "cloud copy" lives in memory and is lost when the dev server stops.
  */
@@ -15,7 +16,7 @@ type StoreModule = typeof import('../../../packages/mcp/src/cloud/store.ts');
 type Room = InstanceType<RoomModule['CloudRoom']>;
 
 const LINK_KEY_RE = /^[A-Za-z0-9_-]{32,128}$/;
-const MAX_BODY = 60 * 1024 * 1024;
+const MAX_BODY = 80 * 1024 * 1024;
 const CORS: Record<string, string> = {
   'access-control-allow-origin': '*',
   'access-control-allow-methods': 'GET, POST, DELETE, OPTIONS',
@@ -96,7 +97,8 @@ export function mcpDevRelay(): Plugin {
         const url = req.url ?? '';
         const mcp = /^\/mcp(?:\/([^/?]+))?\/?(\?.*)?$/.exec(url);
         const sync = /^\/sync\/([^/]+)(\/[^?]*)/.exec(url);
-        if (!mcp && !sync) return next();
+        const github = /^\/github\/([^/]+)(\/[^?]*)/.exec(url);
+        if (!mcp && !sync && !github) return next();
         try {
           if (mcp) {
             for (const [k, v] of Object.entries(CORS)) res.setHeader(k, v);
@@ -107,14 +109,15 @@ export function mcpDevRelay(): Plugin {
             }
           }
           const { keyFromRequest } = await keyMod();
-          const key = mcp ? keyFromRequest(mcp[1], (req.headers.authorization as string | undefined) ?? null) : LINK_KEY_RE.test(sync![1]) ? sync![1] : null;
+          const pathKey = sync?.[1] ?? github?.[1] ?? '';
+          const key = mcp ? keyFromRequest(mcp[1], (req.headers.authorization as string | undefined) ?? null) : LINK_KEY_RE.test(pathKey) ? pathKey : null;
           if (!key) {
             res.statusCode = 401;
             res.setHeader('content-type', 'application/json');
             res.end(JSON.stringify({ error: 'Missing or invalid Game Studio link' }));
             return;
           }
-          if (sync && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) {
+          if ((sync || github) && req.headers.origin && new URL(req.headers.origin).host !== req.headers.host) {
             res.statusCode = 403;
             res.end('Origin not allowed');
             return;
@@ -124,7 +127,7 @@ export function mcpDevRelay(): Plugin {
           const headers = new Headers();
           for (const [k, v] of Object.entries(req.headers)) if (typeof v === 'string') headers.set(k, v);
           const request = new Request(`http://${req.headers.host}${url}`, { method: req.method, headers, body });
-          const response = mcp ? await r.mcp(request) : await r.sync(request, sync![2]);
+          const response = mcp ? await r.mcp(request) : sync ? await r.sync(request, sync[2]) : await r.github(request, github![2]);
           await sendResponse(res, response);
         } catch (e) {
           res.statusCode = 500;

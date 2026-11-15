@@ -11,6 +11,10 @@
  * take over (`hello.takeover`), and the previous one is told it lost control. Nothing is replaced
  * silently.
  */
+import type { GitMethod } from './git-methods.ts';
+
+export { GIT_METHODS, GIT_LEVEL, isGitMethod, type GitMethod } from './git-methods.ts';
+
 export const BRIDGE_PROTOCOL_VERSION = 1;
 /** Largest single message either way. */
 export const BRIDGE_MAX_PAYLOAD = 8 * 1024 * 1024;
@@ -53,8 +57,11 @@ export const BRIDGE_METHODS = [
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
+/** Every MCP tool: the project tools above plus the GitHub / CI / deploy tools (tools-git.ts, cloud/git.ts). */
+export type McpMethod = BridgeMethod | GitMethod;
+
 /** What the cloud asks an open editor to do (things only a browser can). */
-export type EditorRequest = 'run_scene' | 'stop_game' | 'get_console' | 'export_project' | 'confirm';
+export type EditorRequest = 'run_scene' | 'stop_game' | 'get_console' | 'export_project' | 'confirm' | 'git_deploy';
 
 /** Notices the cloud sends to open editors. */
 export type CloudNoticeMessage = { type: 'project-updated'; id: string; revision: string; label: string; by?: 'editor' } | { type: 'project-deleted'; id: string };
@@ -70,6 +77,6 @@ export type BridgeMessage =
   | { type: 'welcome'; protocol: number }
   | { type: 'busy'; message: string }
   | { type: 'revoked'; message: string }
-  | { type: 'request'; id: string; method: BridgeMethod | EditorRequest; params: Record<string, unknown> }
+  | { type: 'request'; id: string; method: McpMethod | EditorRequest; params: Record<string, unknown> }
   | { type: 'response'; id: string; ok: true; result: unknown }
   | { type: 'response'; id: string; ok: false; error: BridgeError };

@@ -31,6 +31,7 @@
     "@dimforge/rapier3d-compat": "^0.21.0",
     "@lezer/highlight": "^1.2.1",
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "blakejs": "^1.2.1",
     "dexie": "^4.4.7",
     "esbuild-wasm": "^0.28.2",
     "fflate": "^0.8.3",
@@ -39,6 +40,7 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "three": "^0.187.0",
+    "tweetnacl": "^1.0.3",
     "zod": "^4.6.7",
     "zustand": "^5.1.0"
   },

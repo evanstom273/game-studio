@@ -6,10 +6,11 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { toErrorPayload } from '../../shared/src/errors.ts';
-import type { BridgeMethod } from './protocol.ts';
+import type { BridgeMethod, McpMethod } from './protocol.ts';
+import { registerGitTools } from './tools-git.ts';
 
 export interface Relay {
-  request(method: BridgeMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+  request(method: McpMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
 }
 
 export const SERVER_NAME = 'game-studio';
@@ -98,5 +99,6 @@ export function buildMcpServer(relay: Relay): McpServer {
   tool('export_project', 'Export project', '"web": a standalone playable web build (zip) · "archive": a .gsproj backup to move the project to another device. The file is downloaded in the user\'s browser.', { format: z.enum(['web', 'archive']).default('web') }, {}, 120_000);
   tool('undo', 'Undo', 'Undo the last change (yours or the user’s).', {});
   tool('redo', 'Redo', 'Redo the last undone change.', {});
+  registerGitTools(server, relay);
   return server;
 }

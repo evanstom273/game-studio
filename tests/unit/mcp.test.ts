@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
-import { BRIDGE_METHODS, BRIDGE_PROTOCOL_VERSION, RelayCore, buildMcpServer, keyFromRequest, type BridgeMessage, type RelaySocket } from '@gs/mcp';
+import { BRIDGE_METHODS, BRIDGE_PROTOCOL_VERSION, GIT_METHODS, RelayCore, buildMcpServer, keyFromRequest, type BridgeMessage, type RelaySocket } from '@gs/mcp';
 
 function fakeEditor(relay: RelayCore, session: string, handle: (method: string, params: Record<string, unknown>) => unknown) {
   const inbox: BridgeMessage[] = [];
@@ -35,10 +35,10 @@ async function connect(relay: RelayCore) {
 }
 
 describe('MCP tools and relay', () => {
-  it('exposes one tool per bridge method with input schemas', async () => {
+  it('exposes one tool per bridge method and GitHub method, with input schemas', async () => {
     const client = await connect(new RelayCore());
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name).sort()).toEqual([...BRIDGE_METHODS].sort());
+    expect(tools.map((t) => t.name).sort()).toEqual([...BRIDGE_METHODS, ...GIT_METHODS].sort());
     const add = tools.find((t) => t.name === 'add_node')!;
     expect(Object.keys(add.inputSchema.properties ?? {})).toEqual(expect.arrayContaining(['scene', 'parent', 'type', 'props']));
   });
