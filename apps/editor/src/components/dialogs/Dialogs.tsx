@@ -37,7 +37,7 @@ export function Dialogs() {
   }
 }
 
-const CATEGORY_ORDER: NodeCategory[] = ['2D', 'Physics 2D', '3D', 'Physics 3D', 'Core', 'Utility', 'Audio'];
+const CATEGORY_ORDER: NodeCategory[] = ['2D', 'Physics 2D', '3D', 'Physics 3D', 'UI', 'Core', 'Utility', 'Audio'];
 
 function AddNodeDialog({ onClose }: { onClose: () => void }) {
   const scenePath = useEditor(activeScenePath);
