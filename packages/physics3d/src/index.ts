@@ -223,6 +223,14 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
       result.collisions.push({ position: new Vector3(col.witness1.x, col.witness1.y, col.witness1.z), normal, collider: other as Node | null });
     }
     if (c.computedGrounded()) result.onFloor = true;
+    // Resting on a floor moves nothing into it, so the controller reports no contact (see the 2D server).
+    if (result.onFloor && !result.collisions.some((col) => col.normal.dot(up) >= cosMax - 1e-4)) {
+      const floor = this.probeFloor(rec, collider, end.sub(start), up, cosMax);
+      if (floor && floor.gap <= 0.02) {
+        result.collisions.push(floor.collision);
+        result.floorNormal = floor.collision.normal;
+      } else result.onFloor = false;
+    }
     let v = v0.clone();
     const into = v.dot(up);
     if (result.onFloor && into < 0) v = v.sub(up.scale(into));
@@ -238,6 +246,20 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
     rec.body.setNextKinematicTranslation(end);
     rec.lastMatrix = node.globalTransform.m;
     node.__setMotion(result);
+  }
+
+  private probeFloor(rec: BodyRecord, collider: RAPIER.Collider, moved: Vector3, up: Vector3, cosMax: number): { collision: { position: Vector3; normal: Vector3; collider: Node | null }; gap: number } | null {
+    const t = collider.translation();
+    const node = rec.node as CharacterBody3D;
+    const reach = Math.max(node.floorSnapLength, 0.05) + 0.15;
+    const hit = this.world.castShape({ x: t.x + moved.x, y: t.y + moved.y, z: t.z + moved.z }, collider.rotation(), { x: -up.x, y: -up.y, z: -up.z }, collider.shape, 0, reach, true, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(node.collisionLayer, node.collisionMask), collider, rec.body);
+    if (!hit) return null;
+    const normal = new Vector3(hit.normal1.x, hit.normal1.y, hit.normal1.z).normalized();
+    if (normal.dot(up) < cosMax - 1e-4) return null;
+    // Flat floors report a normal a hair off vertical; projecting motion on that would push into the floor.
+    const flat = normal.dot(up) > 1 - 1e-6;
+    const other = this.byCollider.get(hit.collider.handle)?.node ?? null;
+    return { collision: { position: new Vector3(hit.witness1.x, hit.witness1.y, hit.witness1.z), normal: flat ? up.clone() : normal, collider: other as Node | null }, gap: hit.time_of_impact };
   }
 
   private floorPlatform(node: CharacterBody3D): (BodyRecord & { node: AnimatableBody3D }) | null {
