@@ -632,6 +632,12 @@ export class Rect2 {
     return new Rect2(minX, minY, maxX - minX, maxY - minY);
   }
 
+  get position() {
+    return new Vector2(this.x, this.y);
+  }
+  get size() {
+    return new Vector2(this.width, this.height);
+  }
   get end() {
     return new Vector2(this.x + this.width, this.y + this.height);
   }

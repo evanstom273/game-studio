@@ -12,8 +12,9 @@ import * as D from './nodes3d';
 import * as P from './physics';
 import * as M from './nodes-misc';
 import { Node as BaseNode } from './node';
+import { registerExtraTypes } from './registry-extra';
 
-export type NodeCategory = 'Core' | '2D' | '3D' | 'Physics 2D' | 'Physics 3D' | 'Audio' | 'Utility';
+export type NodeCategory = 'Core' | '2D' | '3D' | 'Physics 2D' | 'Physics 3D' | 'UI' | 'Audio' | 'Utility';
 
 export interface ConfigWarningContext {
   node: NodeDoc;
@@ -34,6 +35,8 @@ export interface NodeTypeInfo {
   icon: string;
   /** Own properties (inherited ones come from the base). */
   properties: PropDef[];
+  /** Changes to inherited properties for this type, e.g. a different default (Godot: Label's mouse filter is "ignore"). */
+  overrides?: Record<string, Partial<Omit<PropDef, 'name' | 'type'>>>;
   /** Abstract types are bases only and can't be created. */
   abstract?: boolean;
   /** Problems with how the node is set up (Godot's configuration warnings). */
@@ -84,13 +87,19 @@ export class NodeRegistry {
     return this.chain(name).includes(base);
   }
 
-  /** All properties of a type (base properties first). */
+  /** All properties of a type (base properties first), with the type's overrides applied. */
   properties(name: string): PropDef[] {
     let hit = this.propCache.get(name);
     if (!hit) {
-      hit = this.chain(name)
-        .reverse()
-        .flatMap((t) => this.types.get(t)!.properties);
+      const chain = this.chain(name);
+      hit = [...chain].reverse().flatMap((t) => this.types.get(t)!.properties);
+      // The most derived override wins.
+      const overrides = chain.map((t) => this.types.get(t)!.overrides).filter((o) => !!o);
+      if (overrides.length)
+        hit = hit.map((def) => {
+          const o = overrides.find((x) => def.name in x)?.[def.name];
+          return o ? { ...def, ...o } : def;
+        });
       this.propCache.set(name, hit);
     }
     return hit;
@@ -445,6 +454,8 @@ export function registerBuiltinTypes(r: NodeRegistry) {
     description: 'Plays a sound or music track.',
     properties: [{ name: 'stream', type: 'resource', resource: 'audio', default: null, nullable: true }, f('volumeDb', 0, { min: -80, max: 24 }), f('pitchScale', 1, { min: 0.01, max: 4 }), b('autoplay', false), b('loop', false)],
   });
+
+  registerExtraTypes(r);
 }
 
 /** The default registry with all built-in node types. */

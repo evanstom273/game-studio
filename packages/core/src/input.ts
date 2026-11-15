@@ -122,6 +122,8 @@ export class InputManager {
   private inPhysics = false;
   private _pointer = new Vector2();
   private touches = new Map<number, Vector2>();
+  /** Pointers whose press a UI control consumed: their release is the UI's too. */
+  private guiPointers = new Set<number>();
 
   constructor() {
     this.setActions(DEFAULT_ACTIONS);
@@ -155,8 +157,12 @@ export class InputManager {
   }
 
   // --- engine hooks -----------------------------------------------------------------------------------------------
-  /** @internal Applies queued events for a new frame; returns them as events for `_input`. */
-  beginFrame(frame: number, physicsTick: number, pads: GamepadLike[] = []): InputEvent[] {
+  /**
+   * @internal Applies queued events for a new frame; returns them as events for `_input`.
+   * `gui` sees pointer events first (UI controls); when it returns true the event is consumed:
+   * it doesn't press mouse-button actions and is marked handled.
+   */
+  beginFrame(frame: number, physicsTick: number, pads: GamepadLike[] = [], gui?: (e: InputEventPointer) => boolean): InputEvent[] {
     this.frame = frame;
     this.tick = physicsTick;
     this.inPhysics = false;
@@ -170,6 +176,12 @@ export class InputManager {
         if (!e.echo) for (const a of this.actionsFor((b) => b.type === 'key' && b.code === e.code)) out.push(this.actionEvent(a, `key:${e.code}`, e.pressed ? 1 : 0));
       } else if (e.type === 'pointer') {
         this._pointer = e.position.clone();
+        const captured = this.guiPointers.has(e.pointerId);
+        const consumed = (gui?.(e) ?? false) || (captured && e.phase !== 'move');
+        if (consumed) e.handled = true;
+        if (e.phase === 'down' && consumed) this.guiPointers.add(e.pointerId);
+        if (e.phase === 'up' || e.phase === 'cancel') this.guiPointers.delete(e.pointerId);
+        if (consumed) continue;
         if (e.pointerType === 'touch') {
           if (e.phase === 'down' || e.phase === 'move') this.touches.set(e.pointerId, e.position.clone());
           else this.touches.delete(e.pointerId);
@@ -294,6 +306,7 @@ export class InputManager {
     this.state.clear();
     this.queue = [];
     this.touches.clear();
+    this.guiPointers.clear();
   }
 }
 

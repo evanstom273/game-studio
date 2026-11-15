@@ -10,6 +10,7 @@
  */
 import { Color, Vector2, Vector3, parseHexColor, isPlainObject, type Json } from '@gs/shared';
 import type { Resource } from './resources';
+import { validateAnimationLibrary } from './animation-data';
 
 export type ResourceKind = 'texture' | 'audio' | 'scene' | 'model' | 'font';
 
@@ -29,7 +30,13 @@ export type PropType =
   | 'shape3d'
   | 'mesh'
   | 'material'
-  | 'vector2[]';
+  | 'vector2[]'
+  | 'vector3[]'
+  /** Structured data (animations, tile cells…) validated by `jsonKind`. */
+  | 'json';
+
+/** Formats of 'json' properties; each has its own validator. */
+export type JsonKind = 'animations' | 'tilecells';
 
 export interface PropDef {
   name: string;
@@ -52,6 +59,10 @@ export interface PropDef {
   resource?: ResourceKind;
   /** Optional (e.g. a texture or a material may be null). */
   nullable?: boolean;
+  /** For point lists: the fewest points the inspector lets you leave (default 3 for 'vector2[]'). */
+  minItems?: number;
+  /** For 'json': which format the value has. */
+  jsonKind?: JsonKind;
 }
 
 // --- inline resources ---------------------------------------------------------------------------
@@ -137,6 +148,31 @@ function validateMaterial(v: unknown): string | null {
   return null;
 }
 
+/** Tile cells: a flat list of integers, four per tile — x, y, atlasX, atlasY. */
+export function validateTileCells(v: unknown): string | null {
+  if (!Array.isArray(v)) return 'must be a flat list of integers: x, y, atlasX, atlasY for each tile';
+  if (v.length % 4 !== 0) return 'must have four integers per tile (x, y, atlasX, atlasY)';
+  if (v.length > 4 * 262_144) return 'has too many tiles (at most 262144)';
+  for (let k = 0; k < v.length; k++) {
+    const n = v[k];
+    if (!Number.isInteger(n)) return `item ${k} must be a whole number`;
+    const atlas = k % 4 >= 2;
+    if (atlas ? n < 0 || n > 4095 : Math.abs(n) > 1_000_000) return atlas ? `atlas coordinates must be between 0 and 4095 (item ${k})` : `cell coordinates must be within ±1000000 (item ${k})`;
+  }
+  return null;
+}
+
+function validateJson(def: PropDef, value: unknown): string | null {
+  switch (def.jsonKind) {
+    case 'animations':
+      return validateAnimationLibrary(value);
+    case 'tilecells':
+      return validateTileCells(value);
+    default:
+      return value === undefined ? 'is missing' : null;
+  }
+}
+
 /** Returns null when `value` is a valid stored value for `def`, otherwise a short reason. */
 export function validatePropValue(def: PropDef, value: unknown): string | null {
   if (value === null && def.nullable) return null;
@@ -175,6 +211,10 @@ export function validatePropValue(def: PropDef, value: unknown): string | null {
       return validateMaterial(value);
     case 'vector2[]':
       return Array.isArray(value) && value.length <= 4096 && value.every((p) => isVec(p, 2)) ? null : 'must be a list of [x, y] points';
+    case 'vector3[]':
+      return Array.isArray(value) && value.length <= 4096 && value.every((p) => isVec(p, 3)) ? null : 'must be a list of [x, y, z] points';
+    case 'json':
+      return validateJson(def, value);
   }
 }
 
@@ -199,6 +239,10 @@ export function propToRuntime(def: PropDef, value: Json, ctx?: PropContext): unk
       return ctx ? ctx.loadResource(def.resource!, value as string) : null;
     case 'vector2[]':
       return (value as number[][]).map((p) => Vector2.fromArray(p));
+    case 'vector3[]':
+      return (value as number[][]).map((p) => Vector3.fromArray(p));
+    case 'json':
+      return structuredClone(value);
     case 'shape2d':
     case 'shape3d':
     case 'mesh':
@@ -224,10 +268,13 @@ export function propToJson(def: PropDef, value: unknown): Json {
       return (value as Resource).resourcePath ?? null;
     case 'vector2[]':
       return (value as Vector2[]).map((p) => p.toArray());
+    case 'vector3[]':
+      return (value as Vector3[]).map((p) => p.toArray());
     case 'shape2d':
     case 'shape3d':
     case 'mesh':
     case 'material':
+    case 'json':
       return structuredClone(value) as Json;
     default:
       return value as Json;

@@ -4,7 +4,7 @@
  */
 import RAPIER from '@dimforge/rapier3d-compat';
 import { Mat4, Quaternion, Vector3 } from '@gs/shared';
-import { Area3D, CharacterBody3D, CollisionObject3D, CollisionShape3D, RigidBody3D, StaticBody3D, type MotionResult, type Node, type PhysicsServer3D } from '@gs/core';
+import { AnimatableBody3D, Area3D, CharacterBody3D, CollisionObject3D, CollisionShape3D, RigidBody3D, StaticBody3D, type MotionResult, type Node, type PhysicsServer3D, type RayHit, type RayQuery } from '@gs/core';
 
 let initPromise: Promise<void> | null = null;
 export function initPhysics3D() {
@@ -20,6 +20,8 @@ interface BodyRecord {
   lastVel: Vector3;
   lastAngVel: Vector3;
   controller?: RAPIER.KinematicCharacterController;
+  /** Characters: velocity of the platform they stood on last tick (added when they leave it). */
+  platformVelocity?: Vector3 | null;
 }
 
 const groups = (layer: number, mask: number) => (((layer & 0xffff) << 16) | (mask & 0xffff)) >>> 0;
@@ -52,7 +54,7 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
       const av = node.angularVelocity;
       desc.setLinvel(lv.x, lv.y, lv.z).setAngvel({ x: av.x, y: av.y, z: av.z }).setGravityScale(node.gravityScale).setLinearDamping(node.linearDamp).setAngularDamping(node.angularDamp);
       if (node.lockRotation) desc.lockRotations();
-    } else if (node instanceof CharacterBody3D || node instanceof Area3D) desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
+    } else if (node instanceof CharacterBody3D || node instanceof Area3D || node instanceof AnimatableBody3D) desc = RAPIER.RigidBodyDesc.kinematicPositionBased();
     else desc = RAPIER.RigidBodyDesc.fixed();
     desc.setTranslation(d.position.x, d.position.y, d.position.z).setRotation(q(d.quaternion));
     const body = this.world.createRigidBody(desc);
@@ -125,12 +127,13 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
     rec.dirty = false;
   }
 
-  private syncIn(rec: BodyRecord) {
+  private syncIn(rec: BodyRecord, delta: number) {
     if (rec.dirty) this.rebuild(rec);
     const n = rec.node;
     const m = n.globalTransform;
     const moved = !sameMatrix(m.m, rec.lastMatrix);
     const d = moved ? m.decompose() : null;
+    if (n instanceof AnimatableBody3D) n.__platformVelocity = d && delta > 0 ? d.position.sub(new Vector3(rec.lastMatrix[12], rec.lastMatrix[13], rec.lastMatrix[14])).scale(1 / delta) : new Vector3();
     if (n instanceof RigidBody3D && !n.freeze) {
       if (d) {
         rec.body.setTranslation(d.position, true);
@@ -178,6 +181,17 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
       this.world.propagateModifiedBodyPositionsToColliders();
     }
     const c = rec.controller;
+    // Standing on a moving platform: first move with it (ignoring the platform itself), like Godot.
+    const platform = node.isOnFloor() ? this.floorPlatform(node) : null;
+    const platformVel = platform ? platform.node.__platformVelocity.clone() : null;
+    if (platform && platformVel && platformVel.lengthSquared() > 0) {
+      const carry = platformVel.scale(delta);
+      c.computeColliderMovement(collider, { x: carry.x, y: carry.y, z: carry.z }, RAPIER.QueryFilterFlags.EXCLUDE_SENSORS, groups(node.collisionLayer, node.collisionMask), (other) => other.parent()?.handle !== rec.body.handle && other.parent()?.handle !== platform.body.handle);
+      const cm = c.computedMovement();
+      start.set(start.x + cm.x, start.y + cm.y, start.z + cm.z);
+      rec.body.setTranslation(start, true);
+      this.world.propagateModifiedBodyPositionsToColliders();
+    }
     c.setUp(up);
     c.setMaxSlopeClimbAngle(node.floorMaxAngle);
     c.setMinSlopeSlideAngle(node.floorMaxAngle);
@@ -217,6 +231,8 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
       const dn = v.dot(col.normal);
       if (dn < 0 && Math.abs(col.normal.dot(up)) < cosMax) v = v.sub(col.normal.scale(dn));
     }
+    if (!result.onFloor && rec.platformVelocity) v = v.add(rec.platformVelocity);
+    rec.platformVelocity = result.onFloor ? platformVel : null;
     node.velocity = v;
     node.globalPosition = end;
     rec.body.setNextKinematicTranslation(end);
@@ -224,8 +240,49 @@ export class PhysicsServer3DRapier implements PhysicsServer3D {
     node.__setMotion(result);
   }
 
+  private floorPlatform(node: CharacterBody3D): (BodyRecord & { node: AnimatableBody3D }) | null {
+    const up = node.upDirection.normalized();
+    const cosMax = Math.cos(node.floorMaxAngle);
+    for (let i = 0; i < node.getSlideCollisionCount(); i++) {
+      const col = node.getSlideCollision(i);
+      if (!col || !(col.collider instanceof AnimatableBody3D) || col.normal.dot(up) < cosMax - 1e-4) continue;
+      const rec = this.records.get(col.collider);
+      if (rec) return rec as BodyRecord & { node: AnimatableBody3D };
+    }
+    return null;
+  }
+
+  intersectRay(q: RayQuery<Vector3>): RayHit<Vector3> | null {
+    const d = q.to.sub(q.from);
+    const len = d.length();
+    if (len < 1e-9) return null;
+    const dir = d.scale(1 / len);
+    const ray = new RAPIER.Ray({ x: q.from.x, y: q.from.y, z: q.from.z }, { x: dir.x, y: dir.y, z: dir.z });
+    let flags = 0;
+    if (q.collideWithBodies === false) flags |= RAPIER.QueryFilterFlags.EXCLUDE_SOLIDS;
+    if (!q.collideWithAreas) flags |= RAPIER.QueryFilterFlags.EXCLUDE_SENSORS;
+    const skip = new Set<number>();
+    const accept = (col: RAPIER.Collider) => {
+      if (skip.has(col.handle)) return false;
+      const rec = this.byCollider.get(col.handle);
+      return !!rec && (rec.node.collisionLayer & q.collisionMask) !== 0 && !q.exclude?.has(rec.node);
+    };
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const hit = this.world.castRayAndGetNormal(ray, len, true, flags, undefined, undefined, undefined, accept);
+      if (!hit) return null;
+      if (hit.timeOfImpact <= 1e-6 && !q.hitFromInside) {
+        skip.add(hit.collider.handle);
+        continue;
+      }
+      const rec = this.byCollider.get(hit.collider.handle)!;
+      const normal = hit.timeOfImpact <= 1e-6 ? new Vector3() : new Vector3(hit.normal.x, hit.normal.y, hit.normal.z).normalized();
+      return { collider: rec.node, position: q.from.add(dir.scale(hit.timeOfImpact)), normal };
+    }
+    return null;
+  }
+
   step(delta: number) {
-    for (const rec of this.records.values()) this.syncIn(rec);
+    for (const rec of this.records.values()) this.syncIn(rec, delta);
     this.world.timestep = delta;
     this.world.step(this.events);
     for (const rec of this.records.values()) {

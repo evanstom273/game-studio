@@ -7,11 +7,12 @@ import { GameStudioError, Signal, Transform2D, Vector2, errorMessage } from '@gs
 import { Node } from './node';
 import { Camera2D } from './nodes2d';
 import { Camera3D } from './nodes3d';
-import { Timer, type AudioServer } from './nodes-misc';
+import type { AudioServer } from './nodes-misc';
 import type { PhysicsServer2D, PhysicsServer3D } from './physics';
 import { PackedScene, type ResourceLoader } from './resources';
 import { Tween } from './tween';
-import type { InputEvent } from './input';
+import type { InputEvent, InputEventPointer } from './input';
+import { routeGuiPointer } from './nodes-ui';
 
 export type LogLevel = 'log' | 'info' | 'warn' | 'error';
 
@@ -192,11 +193,17 @@ export class SceneTree {
     return this.processList;
   }
 
+  /** @internal Pointer events reach UI controls first; returns true when one consumed it. */
+  guiInput(e: InputEventPointer): boolean {
+    return routeGuiPointer(this, e);
+  }
+
   /** @internal */
   dispatchInput(events: InputEvent[]) {
     if (!events.length) return;
     const nodes = this.list().slice().reverse();
     for (const e of events) {
+      if (e.handled) continue;
       for (const n of nodes) {
         if (e.handled) break;
         if (n._input === Node.prototype._input || !n.isInsideTree() || !n.canProcess()) continue;
@@ -214,10 +221,9 @@ export class SceneTree {
     this.currentDelta = delta;
     for (const n of this.list().slice()) {
       if (!n.isInsideTree() || !n.canProcess()) continue;
-      if (n instanceof Timer) n.__physicsTick(delta);
-      if (n._physicsProcess === Node.prototype._physicsProcess) continue;
       try {
-        n._physicsProcess(delta);
+        n.__physicsProcess(delta);
+        if (n._physicsProcess !== Node.prototype._physicsProcess) n._physicsProcess(delta);
       } catch (e) {
         this.reportError(e, n, '_physicsProcess');
       }
