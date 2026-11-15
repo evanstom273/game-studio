@@ -14,7 +14,7 @@ import type { ParamInput } from '@cs/project-format';
 import { EVENTS, engineApi, gameStudioToolchain, type EditOp } from '@gs/visual';
 import { nodeTypes } from '@gs/core';
 import { toast } from '@editor/store/toasts';
-import { cx } from '../ui/primitives';
+import { cx, isTouch } from '../ui/primitives';
 import { categoryColor } from './model';
 import { editVisualScript, openFunction, revealNode, selectInGraph, uniqueMemberName } from './store';
 import { clipboardSize, paste } from './commands';
@@ -242,7 +242,7 @@ export function AddNodeMenu({ path, script, fn, screen, flow, pending, chain, sh
   const listRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     // Phones: don't pop the keyboard up over the list; tap the search box to search.
-    if (!sheet) inputRef.current?.focus();
+    if (!sheet && !isTouch()) inputRef.current?.focus();
   }, [sheet]);
 
   const all = useMemo(() => paletteEntries(tc, script, fn), [tc, script, fn]);

@@ -3,7 +3,7 @@ import { memo, useEffect, useRef, useState } from 'react';
 import type { JsonValue } from '@cs/graph-core';
 import type { PortSpec } from '@cs/node-registry';
 import { gameStudioToolchain } from '@gs/visual';
-import { cx, inputCls } from '../ui/primitives';
+import { cx, inputCls, isTouch } from '../ui/primitives';
 import { editVisualScript } from './store';
 
 export function commitInput(path: string, fnId: string, nodeId: string, port: string, value: JsonValue | null) {
@@ -26,7 +26,7 @@ function NumberBox({ value, int, onCommit, label, className }: { value: number; 
       inputMode="decimal"
       onFocus={(e) => {
         focused.current = true;
-        e.target.select();
+        if (!isTouch()) e.target.select();
       }}
       onChange={(e) => {
         setText(e.target.value);

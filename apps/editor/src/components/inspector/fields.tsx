@@ -10,7 +10,7 @@ import { useEditor } from '@editor/store/editor';
 import { pickFiles } from '@editor/lib/files';
 import { IMPORT_ACCEPT, importFiles } from '@editor/services/assets';
 import { toast } from '@editor/store/toasts';
-import { IconButton, Select, cx, inputCls } from '../ui/primitives';
+import { IconButton, Select, cx, inputCls, isTouch } from '../ui/primitives';
 
 export type Change = (value: Json, final?: boolean) => void;
 
@@ -58,7 +58,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, label, color,
         className="gs-input h-7 w-full min-w-0 bg-transparent px-1.5 text-[12px] tabular-nums outline-none"
         onFocus={(e) => {
           focused.current = true;
-          e.target.select();
+          if (!isTouch()) e.target.select();
         }}
         onBlur={() => {
           focused.current = false;

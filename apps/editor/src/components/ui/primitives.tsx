@@ -82,19 +82,27 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="rounded border border-border-strong bg-panel-3 px-1 font-mono text-[10px] text-muted">{children}</kbd>;
 }
 
+/** Touch screen (phone, tablet): focusing a text field there pops the keyboard up, so never do it unasked. */
+export const isTouch = () => typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
 export function Dialog({ title, onClose, children, footer, width = 520 }: { title: string; onClose: () => void; children: ReactNode; footer?: ReactNode; width?: number }) {
   const ref = useRef<HTMLDivElement>(null);
+  const close = useRef(onClose);
+  close.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
-        onClose();
+        close.current();
       }
     };
     window.addEventListener('keydown', onKey, true);
-    ref.current?.querySelector<HTMLElement>('[data-autofocus],input,select,textarea')?.focus();
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  }, []);
+  // Once, when the dialog opens: only an element marked data-autofocus, and never on touch screens.
+  useEffect(() => {
+    if (!isTouch()) ref.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus();
+  }, []);
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 sm:items-center" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div

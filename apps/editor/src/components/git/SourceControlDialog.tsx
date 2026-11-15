@@ -13,7 +13,7 @@ import { safeFileName } from '@editor/lib/files';
 import { github } from '@editor/git/api';
 import { createBranchOpen, publishOpen, pullOpen, recoverDeletedBranch, relinkOpen, switchOpen } from '@editor/git/ops';
 import { useGitConflicts, useGitHubAuth } from '@editor/git/store';
-import { Button, Dialog, Field, Select, TextInput, cx } from '../ui/primitives';
+import { Button, Dialog, Field, Select, TextInput, cx, isTouch } from '../ui/primitives';
 import { TokenForm } from './TokenForm';
 import { ChangesTab } from './ChangesTab';
 import { PullRequestsTab } from './PullRequestsTab';
@@ -195,7 +195,7 @@ function Linked({ link, login }: { link: GitLink; login: string }) {
               });
             }}
           >
-            <TextInput autoFocus placeholder="new-branch-name" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} data-testid="new-branch-name" aria-label="New branch name" />
+            <TextInput autoFocus={!isTouch()} placeholder="new-branch-name" value={newBranch} onChange={(e) => setNewBranch(e.target.value)} data-testid="new-branch-name" aria-label="New branch name" />
             <Button type="submit" disabled={!newBranch.trim() || !!busy} data-testid="new-branch-create">
               <Plus size={12} /> Create
             </Button>
