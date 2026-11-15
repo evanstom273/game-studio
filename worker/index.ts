@@ -6,9 +6,11 @@
  *    (Streamable HTTP, stateless JSON responses).
  *  - /bridge/<key>: the editor tab's WebSocket.
  *
- * Each key maps to one Durable Object (named by the key's SHA-256) that relays tool calls to the
- * editor tab holding that key. It stores no project data. Without the key there is nothing to
- * reach; the editor additionally decides what each connection may do.
+ *  - /sync/<key>/...: the editor's sync API (same origin only).
+ *
+ * Each key maps to one Durable Object (named by the key's SHA-256) holding the cloud copy of that
+ * user's projects: AI assistants edit it with no editor open, and editors sync with it. Without the
+ * key there is nothing to reach; the user's permission choices are enforced there too.
  */
 import { keyFromRequest, roomName } from '../packages/mcp/src/keys';
 import { LINK_KEY_RE } from '../packages/mcp/src/protocol';
@@ -42,6 +44,13 @@ export default {
       const headers = new Headers(res.headers);
       for (const [k, v] of Object.entries(CORS)) headers.set(k, v);
       return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+    }
+    const sync = /^\/sync\/([^/]+)(\/.*)$/.exec(url.pathname);
+    if (sync) {
+      if (!LINK_KEY_RE.test(sync[1])) return json(404, { error: 'Unknown link' });
+      // Only the editor served by this site may sync.
+      if (request.headers.get('origin') && request.headers.get('origin') !== url.origin) return json(403, { error: 'Origin not allowed' });
+      return (await room(env, sync[1])).fetch(new Request(new URL(`/sync${sync[2]}`, url), request));
     }
     const bridge = /^\/bridge\/([^/]+)\/?$/.exec(url.pathname);
     if (bridge) {

@@ -4,7 +4,7 @@
  * limits. Transport-agnostic: give it a way to send to and close sockets.
  */
 import { GameStudioError } from '../../shared/src/errors.ts';
-import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, BRIDGE_TIMEOUT_MS, type BridgeMessage, type BridgeMethod } from './protocol.ts';
+import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, BRIDGE_TIMEOUT_MS, type BridgeMessage, type BridgeMethod, type EditorRequest } from './protocol.ts';
 
 export interface RelaySocket {
   send(text: string): void;
@@ -17,7 +17,7 @@ interface Pending {
   timer: ReturnType<typeof setTimeout>;
 }
 
-export const NOT_CONNECTED = 'Game Studio is not connected to this link. Ask the user to open Game Studio and turn on AI connection (the robot button), then try again.';
+export const NOT_CONNECTED = 'No Game Studio editor is open on this link right now.';
 
 export class RelayCore {
   private owner: { socket: RelaySocket; session: string } | null = null;
@@ -94,7 +94,7 @@ export class RelayCore {
   }
 
   /** Sends a tool call to the editor and waits for its answer. */
-  request(method: BridgeMethod, params: Record<string, unknown> = {}, timeoutMs = BRIDGE_TIMEOUT_MS): Promise<unknown> {
+  request(method: BridgeMethod | EditorRequest, params: Record<string, unknown> = {}, timeoutMs = BRIDGE_TIMEOUT_MS): Promise<unknown> {
     const owner = this.owner;
     if (!owner) return Promise.reject(new GameStudioError('E_NOT_CONNECTED', NOT_CONNECTED));
     const id = `r${++this.seq}`;

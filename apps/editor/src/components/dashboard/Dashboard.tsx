@@ -7,7 +7,7 @@ import { storageEstimate } from '@editor/db/db';
 import { navigate } from '@editor/lib/router';
 import { download, pickFiles, safeFileName } from '@editor/lib/files';
 import { toast } from '@editor/store/toasts';
-import { useBridge } from '@editor/bridge/client';
+import { cloudSync, useBridge } from '@editor/bridge/client';
 import { createAndOpenProject } from '@editor/services/editor-service';
 import { Button, Dialog, Field, IconButton, TextInput, cx, formatBytes } from '../ui/primitives';
 import { confirmDialog } from '../ui/feedback';
@@ -41,6 +41,9 @@ export function Dashboard() {
   useEffect(() => {
     document.title = 'Game Studio';
     refresh();
+    // The AI (through the cloud copy) or another device can add or change projects while this page is open.
+    window.addEventListener('gs:projects-changed', refresh);
+    return () => window.removeEventListener('gs:projects-changed', refresh);
   }, [refresh]);
 
   const importArchive = async () => {
@@ -76,7 +79,7 @@ export function Dashboard() {
               <Upload size={14} /> Import .gsproj
             </Button>
             <span className="ml-1 text-[12px] text-muted">
-              Projects are stored in this browser{usage ? ` · ${formatBytes(usage.usage)} used` : ''}. Export a .gsproj to move one to another device.
+              {bridge === 'off' ? 'Projects are stored in this browser' : 'Projects are stored in this browser and synced with your AI connection'}{usage ? ` · ${formatBytes(usage.usage)} used` : ''}. Export a .gsproj to move one to another device.
             </span>
           </div>
           <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted">Projects</h2>
@@ -153,7 +156,10 @@ function ProjectCard({ project: p, onChanged }: { project: ProjectListItem; onCh
               label="Delete"
               danger
               onClick={run(async () => {
-                if (await confirmDialog({ title: 'Delete project?', message: `“${p.name}” and all its files will be deleted from this browser. This can't be undone — export it first if you might want it back.`, confirm: 'Delete', danger: true })) await deleteProject(p.id);
+                if (await confirmDialog({ title: 'Delete project?', message: `“${p.name}” and all its files will be deleted from this browser. This can't be undone — export it first if you might want it back.`, confirm: 'Delete', danger: true })) {
+                  await deleteProject(p.id);
+                  await cloudSync()?.deleteRemote(p.id);
+                }
               })}
             />
           </div>

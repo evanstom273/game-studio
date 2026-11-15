@@ -1,17 +1,22 @@
 /**
  * The editor's side of the AI connection (MCP).
  *
- * Off by default. When on, the tab opens wss://<this site>/bridge/<key> and answers tool calls
- * relayed from /mcp/<key> (Cloudflare Durable Object in production, the dev server locally).
- * The key is a random secret kept in this browser; the MCP link contains it, so whoever has the
- * link can use the connection while it is on — "New link" revokes the old one.
+ * Off by default. When on, this browser's projects are kept in step with a cloud copy in the
+ * site's Durable Object for this link (bridge/sync.ts). AI assistants call /mcp/<key> and edit
+ * that copy directly — Game Studio doesn't need to be open. While a tab is open it gets their
+ * changes live over wss://<site>/bridge/<key>, and runs games when an assistant asks.
  *
- * The user also decides what a connection may do (permissions below); handlers check them.
+ * The key is a random secret kept in this browser; the MCP link contains it, so whoever has the
+ * link can use the connection while it is on — "New link" revokes the old one. The user's
+ * permission choices are sent to the cloud, which enforces them.
  */
 import { create } from 'zustand';
 import { newSecret, toErrorPayload } from '@gs/shared';
-import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, type BridgeMessage, type BridgeMethod } from '@gs/mcp';
-import { handleBridgeRequest } from './handlers';
+import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, type BridgeMessage, type BridgeMethod, type CloudNoticeMessage, type EditorRequest } from '@gs/mcp';
+import { useEditor } from '@editor/store/editor';
+import { onSaved } from '@editor/services/autosave';
+import { handleEditorRequest } from './handlers';
+import { CloudSync } from './sync';
 
 export type BridgeStatus = 'off' | 'connecting' | 'connected' | 'busy' | 'revoked' | 'offline';
 
@@ -91,6 +96,7 @@ export const useBridge = create<BridgeState>()((set, get) => ({
   setPermissions(p) {
     set({ permissions: { ...get().permissions, ...p } });
     persist();
+    sync?.pushSettings(get().permissions);
   },
   takeOver() {
     connect(true);
@@ -106,12 +112,19 @@ export function mcpUrl(key = useBridge.getState().key) {
 }
 
 let ws: WebSocket | null = null;
+/** Cloud sync for the current key (only while the connection is on). */
+let sync: CloudSync | null = null;
+
+export function cloudSync() {
+  return sync;
+}
 let retry = 0;
 let retryTimer: ReturnType<typeof setTimeout> | null = null;
 let ping: ReturnType<typeof setInterval> | null = null;
 let queue: Promise<void> = Promise.resolve();
 
 function disconnect(status: BridgeStatus, text: string) {
+  if (status === 'off') sync = null;
   if (retryTimer) clearTimeout(retryTimer);
   if (ping) clearInterval(ping);
   retryTimer = null;
@@ -125,6 +138,7 @@ function disconnect(status: BridgeStatus, text: string) {
 function connect(takeover = false) {
   disconnect('connecting', 'Connecting…');
   const { key } = useBridge.getState();
+  if (!sync || sync.key !== key) sync = new CloudSync(key);
   const proto = location.protocol === 'https:' ? 'wss' : 'ws';
   const sock = new WebSocket(`${proto}://${location.host}/bridge/${key}`);
   ws = sock;
@@ -140,10 +154,24 @@ function connect(takeover = false) {
     } catch {
       return;
     }
+    if ((msg as unknown as CloudNoticeMessage).type === 'project-updated' || (msg as unknown as CloudNoticeMessage).type === 'project-deleted') {
+      sync?.onNotice(msg as unknown as CloudNoticeMessage);
+      return;
+    }
     if (msg.type === 'welcome') {
       retry = 0;
-      useBridge.setState({ status: 'connected', statusText: 'Connected — waiting for an AI app' });
-    } else if (msg.type === 'busy') useBridge.setState({ status: 'busy', statusText: msg.message });
+      useBridge.setState({ status: 'connected', statusText: 'Connected — syncing…' });
+      const s = sync!;
+      s.pushSettings(useBridge.getState().permissions, useEditor.getState().project?.id);
+      void s
+        .syncAll()
+        .then(() => useBridge.setState({ status: 'connected', statusText: 'Connected — the AI can work even when Game Studio is closed' }))
+        .catch((e) => useBridge.setState({ statusText: `Connected, but syncing failed: ${e instanceof Error ? e.message : String(e)}` }));
+    } else if (msg.type === 'busy') {
+      // Another tab runs games for the AI; this one still syncs.
+      useBridge.setState({ status: 'busy', statusText: `${msg.message} This tab still syncs; take over to run games here.` });
+      void sync?.syncAll().catch(() => {});
+    }
     else if (msg.type === 'revoked') {
       useBridge.setState({ status: 'revoked', statusText: msg.message });
       ws = null;
@@ -163,11 +191,11 @@ function connect(takeover = false) {
   };
 }
 
-async function answer(sock: WebSocket, id: string, method: BridgeMethod, params: Record<string, unknown>) {
+async function answer(sock: WebSocket, id: string, method: BridgeMethod | EditorRequest, params: Record<string, unknown>) {
   const t0 = performance.now();
   let reply: BridgeMessage;
   try {
-    const result = await handleBridgeRequest(method, params ?? {});
+    const result = await handleEditorRequest(method as EditorRequest, params ?? {}, sync);
     reply = { type: 'response', id, ok: true, result };
   } catch (e) {
     reply = { type: 'response', id, ok: false, error: toErrorPayload(e) };
@@ -182,4 +210,9 @@ async function answer(sock: WebSocket, id: string, method: BridgeMethod, params:
 /** Starts the connection if it was left on (call once at startup). */
 export function initBridge() {
   if (useBridge.getState().enabled) connect();
+  // Push every local save; tell the cloud which project is open (tools default to it).
+  onSaved((doc) => void sync?.pushAfterSave(doc));
+  useEditor.subscribe((s, prev) => {
+    if (s.project?.id !== prev.project?.id && s.project) sync?.setActive(s.project.id);
+  });
 }

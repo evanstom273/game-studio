@@ -1,6 +1,10 @@
 /**
- * The scenario from the brief, through real MCP: an MCP client (the SDK's Streamable HTTP client,
- * as Claude uses) → the dev server's relay → this editor tab → the shared command layer.
+ * The AI connection end to end, with a real MCP client (the SDK's Streamable HTTP client, as Claude
+ * uses) against the site's MCP endpoint:
+ *
+ *  1. The AI builds a 3D scene while Game Studio is CLOSED (it edits the cloud copy).
+ *  2. Opening Game Studio brings the work in; changes made while it's open appear live.
+ *  3. With the editor open, the AI can run the game and read its errors.
  *
  *   "Create a new 3D scene, add a floor, directional light and controllable character,
  *    then run it and report any errors."
@@ -15,8 +19,7 @@ async function connect(url: string) {
   await client.connect(new StreamableHTTPClientTransport(new URL(url)));
   const call = async (name: string, args: Record<string, unknown> = {}) => {
     const r = await client.callTool({ name, arguments: args });
-    const text = (r.content as { text: string }[])[0].text;
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse((r.content as { text: string }[])[0].text);
     if (r.isError) throw Object.assign(new Error(parsed.error.message), { code: parsed.error.code });
     return parsed;
   };
@@ -38,16 +41,19 @@ export default class Player extends CharacterBody3D {
 }
 `;
 
-test('an AI assistant builds and runs a 3D scene through MCP', async ({ page }) => {
+test('an AI assistant builds a 3D scene with Game Studio closed, then runs it once it is open', async ({ page }) => {
   await newProject(page, 'empty-3d', 'MCP world');
   await page.getByTestId('toolbar-mcp').click();
   await page.getByTestId('mcp-toggle').check();
-  await expect(page.getByTestId('mcp-status')).toContainText('Connected');
+  await expect(page.getByTestId('mcp-status')).toContainText('even when Game Studio is closed');
   const url = (await page.getByTestId('mcp-url').textContent())!;
-  await page.keyboard.press('Escape');
-  const { client, call } = await connect(url);
+  const editorUrl = page.url();
 
+  // --- 1. Game Studio closed ----------------------------------------------------------------------
+  await page.goto('about:blank');
+  const { client, call } = await connect(url);
   const status = await call('status');
+  expect(status.editorOpen).toBe(false);
   expect(status.project.name).toBe('MCP world');
 
   await call('create_scene', { path: 'scenes/arena.scene', rootType: 'Node3D', rootName: 'Arena', setMain: true });
@@ -66,37 +72,44 @@ test('an AI assistant builds and runs a 3D scene through MCP', async ({ page }) 
     ],
   });
   expect(built.results).toHaveLength(8);
-
-  // The editor shows it: the new scene is open with the nodes in its tree.
-  await expect(page.getByTestId('scene-tree').locator('[data-node-name="Player"]')).toBeVisible();
-
   const diags = await call('get_diagnostics');
   expect(diags.errors).toBe(0);
   expect(diags.warnings).toBe(0);
-
-  const run = await call('run_scene', { seconds: 3 });
-  expect(run.started).toBe(true);
-  expect(run.errors).toBe(0);
-  expect(run.fps).toBeGreaterThan(0);
+  // Running needs a browser: a clear answer, not a hang.
+  await expect(call('run_scene', { seconds: 2 })).rejects.toMatchObject({ code: 'E_NO_EDITOR' });
 
   // Validation and atomicity: a bad batch changes nothing.
   const before = (await call('get_scene', { scene: 'scenes/arena.scene' })).revision;
   await expect(call('edit_project', { commands: [{ op: 'add_node', scene: 'scenes/arena.scene', type: 'Node3D', name: 'Ok' }, { op: 'add_node', scene: 'scenes/arena.scene', type: 'Spaceship' }] })).rejects.toMatchObject({ code: 'E_UNKNOWN_TYPE' });
   expect((await call('get_scene', { scene: 'scenes/arena.scene' })).revision).toBe(before);
-
-  // Revision checks protect the user's edits.
   await expect(call('update_node', { scene: 'scenes/arena.scene', node: 'Sun', props: { energy: 2 }, expected_revision: 'stale' })).rejects.toMatchObject({ code: 'E_REVISION_CONFLICT' });
 
-  // AI edits are ordinary undo steps for the user.
-  await call('update_node', { scene: 'scenes/arena.scene', node: 'Sun', props: { energy: 2 } });
-  const undone = await call('undo');
-  expect(undone.undone).toContain('AI:');
+  // --- 2. Open Game Studio: the work is there --------------------------------------------------------
+  await page.goto(editorUrl);
+  await expect(page.getByTestId('editor')).toBeVisible();
+  await expect(page.locator('[data-testid="file-row"][data-path="scenes/arena.scene"]')).toBeVisible();
+  await page.locator('[data-testid="file-row"][data-path="scenes/arena.scene"] button').first().click();
+  await expect(page.getByTestId('scene-tree').locator('[data-node-name="Player"]')).toBeVisible();
 
-  // Permissions: switching the connection to read-only blocks edits.
+  // Live: a change while it's open appears without reloading, as an undoable step.
+  await call('add_node', { scene: 'scenes/arena.scene', type: 'MeshInstance3D', name: 'Coin', props: { position: [2, 1, 0] } });
+  await expect(page.getByTestId('scene-tree').locator('[data-node-name="Coin"]')).toBeVisible();
+  const undone = await call('undo');
+  expect(undone.undone).toContain('Coin');
+  await expect(page.getByTestId('scene-tree').locator('[data-node-name="Coin"]')).toHaveCount(0);
+
+  // --- 3. With the editor open, the AI can run the game ----------------------------------------------
+  await expect(page.getByTestId('toolbar-mcp')).toBeVisible();
+  const run = await call('run_scene', { seconds: 3 });
+  expect(run.started).toBe(true);
+  expect(run.errors).toBe(0);
+  expect(run.fps).toBeGreaterThan(0);
+
+  // Permissions chosen in the editor are enforced by the cloud copy.
   await page.getByTestId('toolbar-mcp').click();
   await page.getByTestId('mcp-level').selectOption('read');
   await page.keyboard.press('Escape');
-  await expect(call('remove_node', { scene: 'scenes/arena.scene', node: 'Player' })).rejects.toMatchObject({ code: 'E_FORBIDDEN' });
+  await expect.poll(() => call('remove_node', { scene: 'scenes/arena.scene', node: 'Player' }).then(() => 'allowed', (e) => e.code)).toBe('E_FORBIDDEN');
   expect((await call('get_scene', { scene: 'scenes/arena.scene' })).outline).toContain('Player (CharacterBody3D)');
   await client.close();
 });

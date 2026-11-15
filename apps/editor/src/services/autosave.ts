@@ -5,6 +5,7 @@
  */
 import { create } from 'zustand';
 import { saveProject } from '@editor/db/projects';
+import type { ProjectDoc } from '@gs/project';
 import { storageErrorMessage } from '@editor/db/db';
 import { useEditor } from '@editor/store/editor';
 import { toast } from '@editor/store/toasts';
@@ -12,6 +13,13 @@ import { toast } from '@editor/store/toasts';
 export const useSaveStatus = create<{ state: 'saved' | 'pending' | 'saving' | 'error'; error: string | null; at: number }>()(() => ({ state: 'saved', error: null, at: 0 }));
 
 let timer: ReturnType<typeof setTimeout> | null = null;
+const savedListeners = new Set<(doc: ProjectDoc) => void>();
+
+/** Called after every successful save (cloud sync pushes from here). */
+export function onSaved(fn: (doc: ProjectDoc) => void) {
+  savedListeners.add(fn);
+  return () => savedListeners.delete(fn);
+}
 let inFlight: Promise<void> | null = null;
 
 export async function saveNow(): Promise<void> {
@@ -25,6 +33,7 @@ export async function saveNow(): Promise<void> {
     try {
       await saveProject(project);
       useEditor.getState().markSaved(project);
+      for (const fn of savedListeners) fn(project);
       useSaveStatus.setState({ state: useEditor.getState().project === project ? 'saved' : 'pending', error: null, at: Date.now() });
     } catch (e) {
       const message = storageErrorMessage(e);

@@ -53,6 +53,12 @@ export const BRIDGE_METHODS = [
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];
 
+/** What the cloud asks an open editor to do (things only a browser can). */
+export type EditorRequest = 'run_scene' | 'stop_game' | 'get_console' | 'export_project' | 'confirm';
+
+/** Notices the cloud sends to open editors. */
+export type CloudNoticeMessage = { type: 'project-updated'; id: string; revision: string; label: string; by?: 'editor' } | { type: 'project-deleted'; id: string };
+
 export interface BridgeError {
   code: string;
   message: string;
@@ -64,6 +70,6 @@ export type BridgeMessage =
   | { type: 'welcome'; protocol: number }
   | { type: 'busy'; message: string }
   | { type: 'revoked'; message: string }
-  | { type: 'request'; id: string; method: BridgeMethod; params: Record<string, unknown> }
+  | { type: 'request'; id: string; method: BridgeMethod | EditorRequest; params: Record<string, unknown> }
   | { type: 'response'; id: string; ok: true; result: unknown }
   | { type: 'response'; id: string; ok: false; error: BridgeError };

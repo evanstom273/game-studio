@@ -37,7 +37,7 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
   return (
     <Dialog title="AI connection (MCP)" onClose={onClose} width={620}>
       <p className="mb-3 text-[12px] leading-relaxed text-muted">
-        Let an AI assistant — Claude (claude.ai, the desktop and phone apps, Claude Code) or ChatGPT where custom MCP connectors are available — build games in this editor: create scenes and nodes, write scripts, run the game and read its errors. Every change appears here and can be undone.
+        Let an AI assistant — Claude (claude.ai, the desktop and phone apps, Claude Code) or ChatGPT where custom MCP connectors are available — build your games: create projects, scenes and nodes, write scripts, check for problems. While this is on, your projects are also kept in your own Cloudflare Worker, so the AI can work on them <b className="text-text">even when Game Studio is closed</b>; changes show up here (live if it's open) and can be undone.
       </p>
       <label className="mb-3 flex items-center gap-3 rounded-md border border-border bg-panel-2 p-3">
         <input type="checkbox" className="h-4 w-4 accent-[var(--color-accent)]" checked={b.enabled} onChange={(e) => b.setEnabled(e.target.checked)} data-testid="mcp-toggle" />
@@ -83,7 +83,7 @@ export function McpDialog({ onClose }: { onClose: () => void }) {
           </li>
           <li>Then ask, for example: “Create a new 3D scene with a floor, a sun and a controllable character, run it and tell me about any errors.”</li>
         </ul>
-        <p className="mt-2 text-[11px] text-faint">The AI talks to this tab: keep Game Studio open (on phones, browsers pause background tabs, so switch back if it seems stuck).</p>
+        <p className="mt-2 text-[11px] text-faint">Games themselves run in a browser, so for run_scene (testing the game) Game Studio needs to be open on one of your devices. Everything else works in the background.</p>
       </details>
 
       <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-muted">What the AI may do</div>

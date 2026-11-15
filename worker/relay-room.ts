@@ -1,12 +1,13 @@
 /**
- * One RelayRoom per link key. Forwards MCP tool calls to the editor tab connected on /bridge.
- * Editor sockets use the hibernation API, so an idle connected tab costs nothing; the owning
- * session is kept in the socket attachment and restored when the object wakes up.
+ * One RelayRoom per link key: the cloud copy of that user's projects (in this Durable Object's
+ * storage), the MCP endpoint that edits it — so AI assistants work with no editor open — the
+ * editors' sync API, and the editor sockets (live updates, and running games when asked).
+ * Editor sockets use the hibernation API, so a connected idle tab costs nothing.
  */
 import { DurableObject } from 'cloudflare:workers';
-import { WebStandardStreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js';
-import { RelayCore, type RelaySocket } from '../packages/mcp/src/relay';
-import { buildMcpServer } from '../packages/mcp/src/tools';
+import { CloudRoom } from '../packages/mcp/src/cloud/room';
+import type { KvStore } from '../packages/mcp/src/cloud/store';
+import type { RelaySocket } from '../packages/mcp/src/relay';
 import { BRIDGE_MAX_PAYLOAD } from '../packages/mcp/src/protocol';
 
 export interface Env {
@@ -20,15 +21,33 @@ interface Attachment {
 }
 
 export class RelayRoom extends DurableObject<Env> {
-  private relay = new RelayCore();
+  private room: CloudRoom;
   private wrappers = new WeakMap<WebSocket, RelaySocket>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'));
+    const storage = ctx.storage;
+    const kv: KvStore = {
+      get: (k) => storage.get(k),
+      put: (k, v) => storage.put(k, v),
+      delete: async (k) => {
+        await storage.delete(k);
+      },
+      keys: async (prefix) => [...(await storage.list({ prefix })).keys()],
+    };
+    this.room = new CloudRoom(kv, (text) => {
+      for (const ws of ctx.getWebSockets()) {
+        try {
+          ws.send(text);
+        } catch {
+          /* closing */
+        }
+      }
+    });
     for (const ws of ctx.getWebSockets()) {
       const a = (ws.deserializeAttachment() ?? {}) as Attachment;
-      if (a.owner && a.session) this.relay.restoreOwner(this.wrap(ws), a.session);
+      if (a.owner && a.session) this.room.relay.restoreOwner(this.wrap(ws), a.session);
     }
   }
 
@@ -49,31 +68,26 @@ export class RelayRoom extends DurableObject<Env> {
       this.ctx.acceptWebSocket(pair[1]);
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
-    if (request.method !== 'POST') {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'Method not allowed' }, id: null }), { status: 405, headers: { 'content-type': 'application/json', allow: 'POST' } });
-    }
-    // Stateless MCP: a fresh server and transport per request, JSON responses.
-    const server = buildMcpServer(this.relay);
-    const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
-    await server.connect(transport);
-    return transport.handleRequest(request);
+    if (url.pathname === '/mcp') return this.room.mcp(request);
+    if (url.pathname.startsWith('/sync/')) return this.room.sync(request, url.pathname.slice('/sync'.length));
+    return new Response('Not found', { status: 404 });
   }
 
   override async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     if (typeof message !== 'string' || message.length > BRIDGE_MAX_PAYLOAD) return;
     const sock = this.wrap(ws);
-    this.relay.onMessage(sock, message);
-    if (this.relay.isOwner(sock)) {
+    this.room.onMessage(sock, message);
+    if (this.room.relay.isOwner(sock)) {
       for (const other of this.ctx.getWebSockets()) {
         const a = (other.deserializeAttachment() ?? {}) as Attachment;
         const owner = other === ws;
-        if (!!a.owner !== owner) other.serializeAttachment({ ...a, owner, session: owner ? (this.relay.ownerSession ?? undefined) : a.session });
+        if (!!a.owner !== owner) other.serializeAttachment({ ...a, owner, session: owner ? (this.room.relay.ownerSession ?? undefined) : a.session });
       }
     }
   }
 
   override async webSocketClose(ws: WebSocket, code: number) {
-    this.relay.onClose(this.wrap(ws));
+    this.room.onClose(this.wrap(ws));
     try {
       ws.close(code === 1005 ? 1000 : code, 'closing');
     } catch {
@@ -82,6 +96,6 @@ export class RelayRoom extends DurableObject<Env> {
   }
 
   override async webSocketError(ws: WebSocket) {
-    this.relay.onClose(this.wrap(ws));
+    this.room.onClose(this.wrap(ws));
   }
 }
