@@ -36,13 +36,16 @@ const round = (n: number) => Math.round(n * 100) / 100;
 
 export default function Viewport2D({ scenePath }: { scenePath: string }) {
   const host = useRef<HTMLDivElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
-  const overlay = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     const el = host.current!;
-    const cv = canvas.current!;
-    const ov = overlay.current!;
+    // Fresh canvases per run: a disposed renderer loses its WebGL context, which must never be
+    // the context of the next renderer (React may mount effects twice).
+    const cv = document.createElement('canvas');
+    cv.className = 'absolute inset-0 h-full w-full';
+    const ov = document.createElement('canvas');
+    ov.className = 'pointer-events-none absolute inset-0';
+    el.append(cv, ov);
     const live = new LiveScene();
     let renderer: Renderer2D | null = null;
     let disposed = false;
@@ -470,13 +473,12 @@ export default function Viewport2D({ scenePath }: { scenePath: string }) {
       window.removeEventListener('keyup', onKey);
       viewportEvents.removeEventListener('frame', frame);
       renderer?.dispose();
+      cv.remove();
+      ov.remove();
     };
   }, [scenePath]);
 
   return (
-    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-2d">
-      <canvas ref={canvas} className="absolute inset-0 h-full w-full" />
-      <canvas ref={overlay} className="pointer-events-none absolute inset-0" />
-    </div>
+    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-2d" />
   );
 }

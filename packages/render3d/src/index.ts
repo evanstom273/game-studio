@@ -71,7 +71,7 @@ export class Renderer3D implements RenderServer {
     this.renderer = new THREE.WebGLRenderer({ canvas: opts.canvas, antialias: !opts.pixelArt, alpha: false, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(globalThis.devicePixelRatio || 1, 2));
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.scene.add(this.ambient, this.helpers);

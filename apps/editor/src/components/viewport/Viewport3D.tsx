@@ -24,7 +24,6 @@ let sessionSeq = 0;
 
 export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: string; cameraPreview: boolean }) {
   const host = useRef<HTMLDivElement>(null);
-  const canvas = useRef<HTMLCanvasElement>(null);
   const previewRef = useRef(cameraPreview);
   const api = useRef<{ redraw(): void } | null>(null);
 
@@ -35,9 +34,12 @@ export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: st
 
   useEffect(() => {
     const el = host.current!;
+    const cv = document.createElement('canvas');
+    cv.className = 'absolute inset-0 block h-full w-full';
+    el.appendChild(cv);
     const project0 = useEditor.getState().project!;
     const live = new LiveScene();
-    const renderer = new Renderer3D({ canvas: canvas.current!, assets: { url: assetUrl }, width: project0.settings.display.width, height: project0.settings.display.height, editor: true });
+    const renderer = new Renderer3D({ canvas: cv, assets: { url: assetUrl }, width: project0.settings.display.width, height: project0.settings.display.height, editor: true });
     const camera = new THREE.PerspectiveCamera(60, 1, 0.05, 2000);
     camera.position.set(6, 5, 9);
     const orbit = new OrbitControls(camera, el);
@@ -292,13 +294,12 @@ export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: st
       gizmo.dispose();
       orbit.dispose();
       renderer.dispose();
+      cv.remove();
       api.current = null;
     };
   }, [scenePath]);
 
   return (
-    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-3d">
-      <canvas ref={canvas} className="absolute inset-0 block h-full w-full" />
-    </div>
+    <div ref={host} className="absolute inset-0 touch-none select-none overflow-hidden" data-testid="viewport-3d" />
   );
 }

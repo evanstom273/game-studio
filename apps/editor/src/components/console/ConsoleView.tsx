@@ -13,7 +13,10 @@ export function ConsoleView() {
   const [filter, setFilter] = useState<'all' | 'error' | 'warn'>('all');
   const end = useRef<HTMLDivElement>(null);
   const shown = entries.filter((e) => filter === 'all' || e.level === filter);
-  useEffect(() => end.current?.scrollIntoView({ block: 'end' }), [shown.length]);
+  useEffect(() => {
+    // (scrollIntoView returns a Promise in recent Chromium; an effect must not return it.)
+    end.current?.scrollIntoView({ block: 'end' });
+  }, [shown.length]);
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-7 shrink-0 items-center gap-1 border-b border-border px-2 text-[11px]">

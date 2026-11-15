@@ -5,7 +5,7 @@
  */
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
-import { toErrorPayload } from '@gs/shared';
+import { toErrorPayload } from '../../shared/src/errors';
 import type { BridgeMethod } from './protocol';
 
 export interface Relay {

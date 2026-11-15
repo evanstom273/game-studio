@@ -3,7 +3,7 @@
  * socket that owns the link, forwards requests, matches responses, enforces timeouts and payload
  * limits. Transport-agnostic: give it a way to send to and close sockets.
  */
-import { GameStudioError } from '@gs/shared';
+import { GameStudioError } from '../../shared/src/errors';
 import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, BRIDGE_TIMEOUT_MS, type BridgeMessage, type BridgeMethod } from './protocol';
 
 export interface RelaySocket {

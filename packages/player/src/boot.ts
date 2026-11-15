@@ -78,7 +78,8 @@ export async function bootGame(opts: BootOptions): Promise<GameHandle> {
   engine.setAudio(audio);
 
   // Canvases: 3D underneath, 2D on top (transparent when both are used).
-  container.style.position ||= 'relative';
+  // Only position the container if the page hasn't (inline style alone doesn't show stylesheet rules).
+  if (getComputedStyle(container).position === 'static') container.style.position = 'relative';
   container.style.overflow = 'hidden';
   container.style.touchAction = 'none';
   const canvases: HTMLCanvasElement[] = [];
