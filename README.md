@@ -39,7 +39,9 @@ npm run cf:deploy    # build + wrangler deploy (run `npx wrangler login` once fi
 | `packages/audio` | Web Audio server |
 | `packages/scripting` | TypeScript → game bundle (esbuild / esbuild-wasm), editor autocomplete data |
 | `packages/player` | Boots a game: shared by play mode and exported games |
-| `packages/mcp` | MCP tools (29), bridge protocol, relay core |
+| `packages/git` | GitHub sync engine: repo ↔ project mapping, commit, pull with merging, branches, deploys (see [docs/GITHUB.md](docs/GITHUB.md)) |
+| `packages/visual` | Visual scripting: Coding Studio's graph packages (`@cs/*`) plus the Game Studio language (`@gs/visual`, see [docs/VISUAL_SCRIPTING.md](docs/VISUAL_SCRIPTING.md)) |
+| `packages/mcp` | MCP tools (scenes, scripts, visual scripts, GitHub), bridge protocol, relay core, cloud copy |
 | `apps/editor` | The React editor (Vite, Tailwind, Dexie/IndexedDB, CodeMirror) |
 | `worker` | Cloudflare Worker + Durable Object MCP relay |
 

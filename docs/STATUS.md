@@ -15,7 +15,12 @@
 
 - **Production setup**: the full e2e suite (11 tests) passes against `wrangler dev` serving the production build, with the production security headers and the Durable Object relay (`GS_E2E_URL=http://127.0.0.1:8787 npm run test:e2e`).
 
+- **Visual scripting**: graphs compile to engine scripts, are bundled by esbuild and run in the engine (a graph-built character moves); the AI builds visual scripts over MCP with the editor closed and they run in the browser player. (unit tests, Playwright with the real MCP client)
+- **GitHub**: commit, pull with merging, branches, PRs, Actions, Pages and Cloudflare deploy setup, and the 26 MCP git tools — against an in-memory fake GitHub only (unit tests). See [GITHUB.md](GITHUB.md).
+
 ## Not verified yet
+
+- GitHub and Cloudflare deploys against the real services (only a fake GitHub so far).
 
 - Real phones and foldables (only emulated viewports), iOS Safari, Firefox.
 - An actual `wrangler deploy` and connecting claude.ai to it.
