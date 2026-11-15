@@ -43,7 +43,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
         runtimeCaching: [
           { urlPattern: /\/assets\/.*\.wasm$/, handler: 'CacheFirst', options: { cacheName: 'gs-wasm', expiration: { maxEntries: 4 } } },
-          { urlPattern: /\/runtime\/gs-physics(2d|3d)\.js$/, handler: 'StaleWhileRevalidate', options: { cacheName: 'gs-physics' } },
+          // Network first: a physics runtime from an older version must never run with newer code.
+          { urlPattern: /\/runtime\/gs-physics(2d|3d)\.js$/, handler: 'NetworkFirst', options: { cacheName: 'gs-physics', networkTimeoutSeconds: 10 } },
         ],
         navigateFallback: 'index.html',
         navigateFallbackDenylist: [/^\/mcp\//, /^\/bridge\//, /^\/player\.html/, /^\/runtime\//],

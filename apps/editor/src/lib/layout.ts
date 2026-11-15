@@ -60,8 +60,17 @@ const listeners = new Set<() => void>();
 let observed: Element | null = null;
 let ro: ResizeObserver | null = null;
 
+/** A text field has focus (on touch screens that means the on-screen keyboard is probably up). */
+function typing() {
+  const a = document.activeElement as HTMLElement | null;
+  return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.tagName === 'SELECT' || a.isContentEditable);
+}
+
 function update(width = observed?.clientWidth ?? window.innerWidth, height = observed?.clientHeight ?? window.innerHeight) {
-  const next = computeLayout(Math.round(width), Math.round(height), matchMedia('(pointer: coarse)').matches, readSegments(), readPosture());
+  let next = computeLayout(Math.round(width), Math.round(height), matchMedia('(pointer: coarse)').matches, readSegments(), readPosture());
+  // The on-screen keyboard makes the window shorter while you type. Don't switch layouts for that:
+  // it would swap the panels around and close whatever you were typing into (search boxes, menus).
+  if (next.touch && state.touch && next.mode !== state.mode && next.width === state.width && next.height < state.height && typing()) next = { ...next, mode: state.mode, orientation: state.orientation };
   if (next.mode !== state.mode || next.width !== state.width || next.height !== state.height || next.touch !== state.touch || JSON.stringify(next.fold) !== JSON.stringify(state.fold) || next.posture !== state.posture) {
     state = next;
     for (const l of listeners) l();
