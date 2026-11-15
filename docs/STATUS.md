@@ -21,7 +21,6 @@
 ## Not verified yet
 
 - GitHub and Cloudflare deploys against the real services (only a fake GitHub so far).
-
 - Real phones and foldables (only emulated viewports), iOS Safari, Firefox.
 - An actual `wrangler deploy` and connecting claude.ai to it.
 - Audio playback, glTF model import, and gamepads have code but no automated test.
