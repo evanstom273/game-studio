@@ -9,6 +9,9 @@
  * The same renderer serves the running game (camera + stretch mode) and the editor viewport
  * (an explicit view, plus collision-shape outlines).
  */
+// Pixi normally compiles shaders and uniform uploads with eval; this add-on swaps in
+// eval-free versions so the editor and games work under a strict Content-Security-Policy.
+import 'pixi.js/unsafe-eval';
 import { Container, Graphics, ImageSource, Matrix, Rectangle, Sprite, Text, Texture, autoDetectRenderer, type Renderer } from 'pixi.js';
 import { Color, Transform2D, Vector2 } from '@gs/shared';
 import { AnimatedSprite2D, CollisionShape2D, Label2D, Node2D, Polygon2D, Sprite2D, type Node, type RenderServer, type SceneTree } from '@gs/core';

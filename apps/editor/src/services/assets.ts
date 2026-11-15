@@ -4,7 +4,7 @@
  */
 import { GameStudioError, normalizePath, sha256Hex, stem, extname, dirname } from '@gs/shared';
 import { assetKindForPath } from '@gs/core';
-import { encodePng, readImageSize, type ProjectDoc } from '@gs/project';
+import { readImageSize, type ProjectDoc } from '@gs/project';
 import { getProjectBlobs, putBlob } from '@editor/db/projects';
 import { useEditor } from '@editor/store/editor';
 
@@ -144,38 +144,4 @@ export async function importFiles(files: File[], folder = 'assets'): Promise<{ i
   return { imported, errors };
 }
 
-/** Simple generated textures (prototyping, MCP's create_texture). */
-export function generateTexture(width: number, height: number, shape: 'rect' | 'circle' | 'checker' | 'gradient', color: string, color2 = '#ffffff'): Uint8Array {
-  const parse = (hex: string) => {
-    const m = /^#?([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(hex.trim());
-    if (!m) throw new GameStudioError('E_INVALID_VALUE', `"${hex}" is not a colour like #ff8800`);
-    const n = parseInt(m[1], 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255, m[2] ? parseInt(m[2], 16) : 255];
-  };
-  const a = parse(color);
-  const b = parse(color2);
-  const px = new Uint8Array(width * height * 4);
-  const cell = Math.max(2, Math.round(Math.min(width, height) / 8));
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      let c = a;
-      let alpha = 1;
-      if (shape === 'circle') {
-        const dx = x + 0.5 - width / 2;
-        const dy = y + 0.5 - height / 2;
-        const r = Math.min(width, height) / 2;
-        alpha = Math.max(0, Math.min(1, r - Math.hypot(dx, dy)));
-      } else if (shape === 'checker') c = (Math.floor(x / cell) + Math.floor(y / cell)) % 2 ? b : a;
-      else if (shape === 'gradient') {
-        const t = height > 1 ? y / (height - 1) : 0;
-        c = a.map((v, i) => Math.round(v + (b[i] - v) * t));
-      }
-      const i = (y * width + x) * 4;
-      px[i] = c[0];
-      px[i + 1] = c[1];
-      px[i + 2] = c[2];
-      px[i + 3] = Math.round(c[3] * alpha);
-    }
-  }
-  return encodePng(width, height, px);
-}
+export { generateTexture } from '@gs/project';

@@ -13,9 +13,10 @@
 - **MCP** (Playwright with the real MCP SDK client): the brief's scenario. Create a 3D scene with floor, light and a scripted character, check diagnostics, run it, get zero errors. Atomic batch rejection, revision conflicts, undo of AI edits, read-only permission enforced.
 - **Cloudflare**: `wrangler dev` serves the build. The MCP endpoint answers through the Durable Object (401 without a key, `E_NOT_CONNECTED` with no editor attached), the SPA fallback works, and the player gets its own CSP on both `/player.html` and `/player`.
 
+- **Production setup**: the full e2e suite (11 tests) passes against `wrangler dev` serving the production build, with the production security headers and the Durable Object relay (`GS_E2E_URL=http://127.0.0.1:8787 npm run test:e2e`).
+
 ## Not verified yet
 
-- The full e2e suite **against `wrangler dev`** (production CSP + Durable Object + editor tab): started, then stopped before it finished. Run it with `GS_E2E_URL` (see `playwright.config.ts`).
 - Real phones and foldables (only emulated viewports), iOS Safari, Firefox.
 - An actual `wrangler deploy` and connecting claude.ai to it.
 - Audio playback, glTF model import, and gamepads have code but no automated test.

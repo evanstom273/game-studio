@@ -61,7 +61,7 @@ let observed: Element | null = null;
 let ro: ResizeObserver | null = null;
 
 function update(width = observed?.clientWidth ?? window.innerWidth, height = observed?.clientHeight ?? window.innerHeight) {
-  const next = computeLayout(width, height, matchMedia('(pointer: coarse)').matches, readSegments(), readPosture());
+  const next = computeLayout(Math.round(width), Math.round(height), matchMedia('(pointer: coarse)').matches, readSegments(), readPosture());
   if (next.mode !== state.mode || next.width !== state.width || next.height !== state.height || next.touch !== state.touch || JSON.stringify(next.fold) !== JSON.stringify(state.fold) || next.posture !== state.posture) {
     state = next;
     for (const l of listeners) l();

@@ -12,7 +12,7 @@ export async function newProject(page: Page, template: '2d-platformer' | '3d-sta
 
 /** The play frame (sandboxed iframe). */
 export function playerFrame(page: Page) {
-  return page.frames().find((f) => f.url().includes('/player.html'));
+  return page.frames().find((f) => /\/player(\.html)?(\?|$)/.test(f.url()));
 }
 
 export async function waitSaved(page: Page) {

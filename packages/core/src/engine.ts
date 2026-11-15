@@ -85,7 +85,14 @@ export class Engine {
     this.frame++;
     this.time += dt;
     const tree = this.tree;
-    tree.dispatchInput(Input.beginFrame(this.frame, this.physicsTick, this.getGamepads()));
+    let pads: GamepadLike[] = [];
+    try {
+      pads = this.getGamepads();
+    } catch {
+      // Gamepads can be blocked (permissions policy, sandboxing): the game must keep running.
+      this.getGamepads = () => [];
+    }
+    tree.dispatchInput(Input.beginFrame(this.frame, this.physicsTick, pads));
 
     const fixed = tree.physicsDelta;
     this.accumulator += dt;

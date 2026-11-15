@@ -1,7 +1,7 @@
 /*
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin
-  Permissions-Policy: camera=(), microphone=(), geolocation=(), gamepad=(self)
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), gamepad=*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: data:; font-src 'self' data:; worker-src 'self' blob:; connect-src 'self' blob: data: wss: ws://localhost:* ws://127.0.0.1:*; frame-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
 
 # The player frame runs game scripts. It is loaded in a sandboxed iframe (opaque origin) by the
@@ -9,10 +9,14 @@
 # (the compiled game). No network access beyond the site itself.
 # Cloudflare serves /player.html at /player (trailing-slash/HTML handling), so cover both.
 /player.html
+  ! Permissions-Policy
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), gamepad=*
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'
 
 /player
+  ! Permissions-Policy
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), gamepad=*
   ! Content-Security-Policy
   Content-Security-Policy: default-src 'none'; script-src 'self' blob: 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' data: blob:; worker-src blob:; frame-ancestors 'self'; base-uri 'none'; form-action 'none'
 

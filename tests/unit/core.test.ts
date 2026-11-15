@@ -412,3 +412,22 @@ describe('scenes', () => {
     expect(doc.root.children![0]).toMatchObject({ name: 'Hero', type: 'Sprite2D', props: { position: [1, 2], modulate: '#ff0000' } });
   });
 });
+
+describe('robustness', () => {
+  it('keeps running when the gamepad API throws (blocked by a permissions policy)', () => {
+    const engine = new Engine();
+    let ticks = 0;
+    class T extends Node {
+      override _physicsProcess() {
+        ticks++;
+      }
+    }
+    engine.tree.setCurrentScene(new T());
+    engine.getGamepads = () => {
+      throw new Error('Access to the feature "gamepad" is disallowed by permissions policy.');
+    };
+    for (let i = 0; i < 10; i++) engine.step(1 / 60);
+    expect(ticks).toBe(10);
+    engine.dispose();
+  });
+});

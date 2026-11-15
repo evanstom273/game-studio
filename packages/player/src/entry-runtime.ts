@@ -40,6 +40,9 @@ globalThis.GameStudio = api;
 function loadScript(src: string) {
   return new Promise<void>((resolve, reject) => {
     const s = document.createElement('script');
+    // CORS mode: errors inside these files then carry their real message (the page's
+    // origin is opaque in the sandbox, so without it every error reads "Script error.").
+    if (!src.startsWith('blob:')) s.crossOrigin = 'anonymous';
     s.src = src;
     s.onload = () => resolve();
     s.onerror = () => reject(new Error(`Could not load ${src}`));

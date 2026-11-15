@@ -81,6 +81,7 @@ export function runtimeBundles(root: string): Plugin {
           if (!p) cache.set(m[1], (p = buildRuntimeBundle(root, m[1], false)));
           const js = await p;
           res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
+          res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Cache-Control', 'no-store');
           res.end(js);
         } catch (e) {

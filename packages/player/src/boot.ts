@@ -156,7 +156,13 @@ export async function bootGame(opts: BootOptions): Promise<GameHandle> {
   for (const t of ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'] as const) top.addEventListener(t, onPointer);
   top.addEventListener('wheel', onWheel, { passive: false });
   top.addEventListener('contextmenu', (e) => e.preventDefault());
-  engine.getGamepads = () => (typeof navigator !== 'undefined' && navigator.getGamepads ? (navigator.getGamepads().filter(Boolean) as Gamepad[]) : []);
+  engine.getGamepads = () => {
+    try {
+      return typeof navigator !== 'undefined' && navigator.getGamepads ? (navigator.getGamepads().filter(Boolean) as Gamepad[]) : [];
+    } catch {
+      return []; // blocked by the page's permissions policy
+    }
+  };
 
   const touch = settings.input.touchControls;
   const removeTouch = touch === 'always' || (touch === 'auto' && matchMedia('(pointer: coarse)').matches) ? createTouchControls(container) : null;
