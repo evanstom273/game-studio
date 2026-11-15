@@ -5,7 +5,7 @@
 import { useMemo, useState } from 'react';
 import { ChevronDown, ChevronRight, ExternalLink, FileCode2, FileJson, GitPullRequest, Image, Undo2 } from 'lucide-react';
 import { repoFileRole, type GitLink } from '@gs/project';
-import { githubCall, status, type Change } from '@gs/git';
+import { githubCall, status, type Change, type Conflict } from '@gs/git';
 import { useEditor } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
 import { toast } from '@editor/store/toasts';
@@ -35,11 +35,13 @@ export function openInEditor(path: string) {
 }
 
 const STATUS_COLOR = { added: 'text-ok', deleted: 'text-err', modified: 'text-warn' } as const;
+// A stable empty list: a selector must not return a new array each time.
+const NONE: Conflict[] = [];
 
 export function ChangesTab({ link }: { link: GitLink }) {
   const project = useEditor((s) => s.project)!;
   const changes = useMemo(() => status(project), [project]);
-  const conflicts = useGitConflicts((s) => (s.projectId === project.id ? s.conflicts : []));
+  const conflicts = useGitConflicts((s) => (s.projectId === project.id ? s.conflicts : NONE));
   const { busy, run } = useBusy();
   const [msg, setMsg] = useState('');
   const [toBranch, setToBranch] = useState(false);
