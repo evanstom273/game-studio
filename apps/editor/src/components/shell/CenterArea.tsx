@@ -1,4 +1,5 @@
 /** Document tabs plus the active document (scene viewport, script editor or visual script editor), or the running game. */
+import { newVisualScriptFile } from '@editor/components/files/FileBrowser';
 import { lazy, Suspense } from 'react';
 import { Clapperboard, FileCode2, Plus, Workflow, X } from 'lucide-react';
 import { basename } from '@gs/shared';
@@ -40,6 +41,9 @@ function Tabs() {
       <IconButton label="New scene" className="mx-1 self-center" onClick={() => useUi.getState().set({ dialog: 'new-scene' })} data-testid="new-scene-tab">
         <Plus size={14} />
       </IconButton>
+      <button className="touch-target mr-1 flex items-center gap-1 self-center rounded-md px-2 py-1 text-[12px] text-muted hover:bg-panel-3 hover:text-text" onClick={() => newVisualScriptFile()} title="New visual script (a script made of connected blocks)" data-testid="new-visual-tab">
+        <Workflow size={13} className="text-node-physics" /> Visual script
+      </button>
     </div>
   );
 }

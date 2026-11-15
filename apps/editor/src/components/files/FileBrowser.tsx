@@ -235,7 +235,8 @@ function newScript() {
  * A new visual script (.vgraph). It extends the selected node's type (or the open scene's kind of
  * root: Node2D / Node3D), which can be changed later in the graph editor's script panel.
  */
-function newVisualScriptFile() {
+/** Creates a visual script (and attaches it to the selected node if that node has no script yet). */
+export function newVisualScriptFile() {
   const s = useEditor.getState();
   const name = prompt('Visual script file name', 'scripts/new_visual_script.vgraph');
   if (!name) return;
@@ -247,7 +248,8 @@ function newVisualScriptFile() {
   if (!/^[A-Z]/.test(className)) className = `S${className}`;
   if (ENGINE_EXPORTS.has(className)) className = `My${className}`;
   try {
-    s.dispatch([{ op: 'write_script', path, source: serializeVisualScript(newVisualScript(className, base)) }], { label: `New ${path}` });
+    const attach = scene && s.active?.kind === 'scene' && selected && !selected.script ? [{ op: 'attach_script' as const, scene: s.active.path, node: selected.id, script: path }] : [];
+    s.dispatch([{ op: 'write_script', path, source: serializeVisualScript(newVisualScript(className, base)) }, ...attach], { label: `New ${path}` });
     s.openDoc({ kind: 'script', path });
   } catch (e) {
     toast('error', errorMessage(e));
