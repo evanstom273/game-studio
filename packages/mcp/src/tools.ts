@@ -7,6 +7,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { toErrorPayload } from '../../shared/src/errors.ts';
 import type { BridgeMethod } from './protocol.ts';
+import { registerVisualTools } from './tools-visual.ts';
 
 export interface Relay {
   request(method: BridgeMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
@@ -24,6 +25,7 @@ Model:
 - Values: vectors as [x, y] / [x, y, z], colours "#rrggbb", textures/sounds/models as project paths (import them first).
 - Physics bodies need a CollisionShape2D/3D child. Characters move from scripts with moveAndSlide().
 - Scripts: "export default class Player extends CharacterBody2D { … }" importing from 'gamestudio' (Input, Vector2, Vector3, Color, print…). Override _ready, _process(delta), _physicsProcess(delta). "static exports = ['speed']" exposes fields in the inspector. A script may extend the node's type or one of its base types.
+- Visual scripts (.vgraph) are Blueprint-style graphs the user can edit visually; they compile to the same kind of script. If the user works with visual scripts, change them with create_visual_script / edit_visual_script (never write their JSON with write_script); list_visual_nodes and get_visual_node tell you the node types and pins. Otherwise prefer TypeScript.
 - Nodes are addressed by id, by path from the scene root ("Player/Sprite", "." = root), or "$ref" inside one edit_project batch.
 
 Workflow: status → (create_project | open_project) → get_scene → edit_project (batch, atomic) / add_node / update_node → write_script → get_diagnostics → run_scene to check it actually runs, and fix every error it reports before saying you're done. Tools that are not allowed in the editor's AI-connection settings answer E_FORBIDDEN; destructive ones may need the user's confirmation in the editor.`;
@@ -98,5 +100,6 @@ export function buildMcpServer(relay: Relay): McpServer {
   tool('export_project', 'Export project', '"web": a standalone playable web build (zip) · "archive": a .gsproj backup to move the project to another device. The file is downloaded in the user\'s browser.', { format: z.enum(['web', 'archive']).default('web') }, {}, 120_000);
   tool('undo', 'Undo', 'Undo the last change (yours or the user’s).', {});
   tool('redo', 'Redo', 'Redo the last undone change.', {});
+  registerVisualTools(tool);
   return server;
 }

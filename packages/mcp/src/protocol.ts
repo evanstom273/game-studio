@@ -49,6 +49,12 @@ export const BRIDGE_METHODS = [
   'export_project',
   'undo',
   'redo',
+  // visual scripts (packages/mcp/src/cloud/visual.ts)
+  'list_visual_nodes',
+  'get_visual_node',
+  'get_visual_script',
+  'create_visual_script',
+  'edit_visual_script',
 ] as const;
 
 export type BridgeMethod = (typeof BRIDGE_METHODS)[number];

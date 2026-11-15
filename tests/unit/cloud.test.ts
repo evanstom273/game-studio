@@ -121,3 +121,50 @@ describe('cloud sync API', () => {
     expect(projectRevision((await room.store.get(id))!)).not.toBe(revision);
   });
 });
+
+describe('visual scripts over MCP', () => {
+  it('an AI builds a visual script with graph operations, with no editor open', async () => {
+    const { call } = setup();
+    await call('create_project', { name: 'Graphs', template: 'empty-2d' });
+    await call('add_node', { type: 'CharacterBody2D', name: 'Hero' });
+    const cats = await call('list_visual_nodes');
+    expect((cats.categories as { name: string }[]).some((c) => c.name === 'Input')).toBe(true);
+    const found = (await call('list_visual_nodes', { query: 'move and slide' })).nodes as { type: string }[];
+    expect(found.map((n) => n.type)).toContain('gs.characterbody2d.move_and_slide');
+    const pins = await call('get_visual_node', { type: 'gs.input.get_vector' });
+    expect((pins.ports as { id: string }[]).map((p) => p.id)).toEqual(['negX', 'posX', 'negY', 'posY', 'result']);
+
+    const created = await call('create_visual_script', { path: 'scripts/hero.vgraph', nodeType: 'CharacterBody2D', attach: { node: 'Hero' } });
+    expect(created.className).toBe('Hero');
+    const physics = (created.functions as { name: string; nodes: { id: string; type: string }[] }[]).find((f) => f.name === '_physicsProcess')!;
+    const entry = physics.nodes.find((n) => n.type === 'core.entry')!.id;
+    const edited = await call('edit_visual_script', {
+      path: 'scripts/hero.vgraph',
+      function: '_physicsProcess',
+      ops: [
+        { op: 'add_variable', ref: 'speed', name: 'speed', type: 'float', default: 250, exported: true },
+        { op: 'add_node', ref: 'dir', type: 'gs.input.get_vector' },
+        { op: 'add_node', ref: 'spd', type: 'core.get_var', props: { variable: '$speed' } },
+        { op: 'add_node', ref: 'mul', type: 'gs.vector2_scale_op' },
+        { op: 'add_node', ref: 'set', type: 'gs.characterbody2d.set.velocity' },
+        { op: 'add_node', ref: 'move', type: 'gs.characterbody2d.move_and_slide' },
+        { op: 'connect', from: { node: entry, port: 'then' }, to: { node: '$set', port: 'exec' } },
+        { op: 'connect', from: { node: '$dir', port: 'result' }, to: { node: '$mul', port: 'a' } },
+        { op: 'connect', from: { node: '$spd', port: 'value' }, to: { node: '$mul', port: 'b' } },
+        { op: 'connect', from: { node: '$mul', port: 'result' }, to: { node: '$set', port: 'value' } },
+        { op: 'connect', from: { node: '$set', port: 'then' }, to: { node: '$move', port: 'exec' } },
+      ],
+    });
+    expect(edited.diagnostics).toEqual([]);
+    expect(edited.compiled).toBe(true);
+    expect(edited.code).toContain('this.velocity = Input.getVector(');
+    const read = await call('get_visual_script', { path: 'scripts/hero.vgraph' });
+    expect((read.variables as { name: string }[])[0].name).toBe('speed');
+    expect((await call('get_scene')).outline).toMatch(/Hero \(CharacterBody2D\) #\w+ script=scripts\/hero.vgraph/);
+    const diags = await call('get_diagnostics');
+    expect(diags.errors).toBe(0);
+    // A bad op changes nothing and says which one failed.
+    await rejects(call('edit_visual_script', { path: 'scripts/hero.vgraph', ops: [{ op: 'add_node', type: 'gs.node2d.get.position' }, { op: 'connect', from: { node: 'nope', port: 'x' }, to: { node: 'nope', port: 'y' } }] }), 'E_INVALID_OPERATION');
+    expect(((await call('get_visual_script', { path: 'scripts/hero.vgraph' })).functions as { nodes: unknown[] }[]).find(() => true)).toBeTruthy();
+  });
+});

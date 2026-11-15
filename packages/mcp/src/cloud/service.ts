@@ -10,6 +10,7 @@ import { GameStudioError, Signal, base64ToBytes, errorMessage, sha256Hex } from 
 import { assetKindForPath, nodeTypes } from '@gs/core';
 import { TEMPLATES, applyCommands, createProject, generateTexture, projectDiagnostics, projectRevision, projectSummary, readImageSize, sceneOutline, type Command, type ProjectDoc, type TemplateId } from '@gs/project';
 import type { BridgeMethod, EditorRequest } from '../protocol.ts';
+import { handleVisual, VISUAL_METHODS, VISUAL_READ, type VisualMethod } from './visual.ts';
 import { CloudStore, type Permissions } from './store.ts';
 import { checkScripts } from './syntax.ts';
 
@@ -22,7 +23,7 @@ export interface EditorLink {
 
 export type CloudNotice = { type: 'project-updated'; id: string; revision: string; label: string } | { type: 'project-deleted'; id: string };
 
-const READ: BridgeMethod[] = ['status', 'list_projects', 'get_project', 'list_node_types', 'get_node_type', 'get_scene', 'read_script', 'list_assets', 'get_console', 'get_diagnostics'];
+const READ: BridgeMethod[] = ['status', 'list_projects', 'get_project', 'list_node_types', 'get_node_type', 'get_scene', 'read_script', 'list_assets', 'get_console', 'get_diagnostics', ...(VISUAL_READ as BridgeMethod[])];
 const FULL: BridgeMethod[] = ['run_scene', 'stop_game', 'export_project'];
 const OTHER_PROJECTS: BridgeMethod[] = ['create_project', 'open_project'];
 const NODE_OPS = new Set(['add_node', 'set_props', 'reset_props', 'set_script_props', 'rename_node', 'remove_node', 'reparent_node', 'move_node', 'duplicate_node', 'attach_script', 'set_groups', 'connect_signal', 'disconnect_signal']);
@@ -150,6 +151,9 @@ export class CloudService {
   async handle(method: BridgeMethod, params: Record<string, unknown>): Promise<unknown> {
     const perms = await this.permissions();
     this.check(method, perms);
+    if ((VISUAL_METHODS as readonly string[]).includes(method)) {
+      return handleVisual({ project: (ref) => this.project(ref), edit: (doc, commands, label) => this.edit(doc, commands, label), scenePath: (doc, scene) => this.scenePath(doc, scene), checkRevision: (doc, rev) => this.checkRevision(doc, rev) }, method as VisualMethod, params);
+    }
     switch (method) {
       case 'status': {
         const meta = await this.store.meta();
