@@ -43,6 +43,7 @@
       "@cs/language-typescript": ["packages/visual/language-typescript/src/index.ts"],
       "@cs/styling": ["packages/visual/styling/src/index.ts"],
       "@cs/project-format": ["packages/visual/project-format/src/index.ts"],
+      "@gs/git": ["packages/git/src/index.ts"],
       "@editor/*": ["apps/editor/src/*"]
     }
   },

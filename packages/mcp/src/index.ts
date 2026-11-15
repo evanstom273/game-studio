@@ -7,3 +7,7 @@ export * from './cloud/store';
 export * from './cloud/service';
 export * from './cloud/room';
 export * from './cloud/syntax';
+export * from './cloud/github-vault';
+export * from './cloud/cloudflare';
+export * from './cloud/git';
+export * from './tools-git';

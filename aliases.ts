@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 /** Package aliases shared by Vite, Vitest and esbuild. Keep in sync with tsconfig.json "paths". */
-export const PACKAGES = ['shared', 'core', 'render2d', 'render3d', 'physics2d', 'physics3d', 'audio', 'project', 'scripting', 'player', 'exporter', 'mcp'] as const;
+export const PACKAGES = ['shared', 'core', 'render2d', 'render3d', 'physics2d', 'physics3d', 'audio', 'project', 'scripting', 'player', 'exporter', 'mcp', 'git'] as const;
 
 /** Visual-scripting packages shared with Coding Studio (kept under their original @cs/* names). */
 export const VISUAL_PACKAGES = ['type-system', 'graph-core', 'intermediate-representation', 'node-registry', 'language-sdk', 'compiler-core', 'language-typescript', 'styling', 'project-format'] as const;

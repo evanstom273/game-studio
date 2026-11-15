@@ -6,11 +6,12 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { toErrorPayload } from '../../shared/src/errors.ts';
-import type { BridgeMethod } from './protocol.ts';
+import type { BridgeMethod, McpMethod } from './protocol.ts';
+import { registerGitTools } from './tools-git.ts';
 import { registerVisualTools } from './tools-visual.ts';
 
 export interface Relay {
-  request(method: BridgeMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
+  request(method: McpMethod, params?: Record<string, unknown>, timeoutMs?: number): Promise<unknown>;
 }
 
 export const SERVER_NAME = 'game-studio';
@@ -101,5 +102,6 @@ export function buildMcpServer(relay: Relay): McpServer {
   tool('undo', 'Undo', 'Undo the last change (yours or the user’s).', {});
   tool('redo', 'Redo', 'Redo the last undone change.', {});
   registerVisualTools(tool);
+  registerGitTools(server, relay);
   return server;
 }

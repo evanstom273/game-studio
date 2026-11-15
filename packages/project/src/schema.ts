@@ -62,6 +62,30 @@ export interface ProjectDoc {
   scripts: Record<string, string>;
   /** path → metadata; bytes are stored by `hash` */
   assets: Record<string, AssetInfo>;
+  /** The GitHub repository this project is linked to, and the state last in step with it (see @gs/git). */
+  git?: GitLink;
+}
+
+/**
+ * What a project last synced with on GitHub. `tree` holds the git blob SHA of every project file
+ * at `commit` (files outside the project, such as README.md or workflows, are left to GitHub), so
+ * changes are found by comparing hashes without downloading anything.
+ */
+export interface GitLink {
+  provider: 'github';
+  owner: string;
+  repo: string;
+  branch: string;
+  /** Commit the project was last in step with. */
+  commit: string;
+  /** Project file path → git blob SHA at `commit`. */
+  tree: Record<string, string>;
+  /** Asset path → SHA-256 of its bytes at `commit` (so unchanged assets are known without hashing them). */
+  assets?: Record<string, string>;
+  /** Path → file mode, for files that aren't plain 100644 (kept as they were). */
+  modes?: Record<string, string>;
+  /** Files of the repository left out when it was opened (too large): never deleted by commits. */
+  skipped?: string[];
 }
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
@@ -145,6 +169,20 @@ export const AssetInfoSchema = z.object({
   height: z.number().int().min(0).max(65536).optional(),
 });
 
+const sha1 = z.string().regex(/^[0-9a-f]{40}$/);
+
+export const GitLinkSchema = z.object({
+  provider: z.literal('github'),
+  owner: z.string().regex(/^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/, 'not a GitHub user or organisation name'),
+  repo: z.string().regex(/^[A-Za-z0-9._-]{1,100}$/, 'not a GitHub repository name'),
+  branch: z.string().min(1).max(255),
+  commit: sha1,
+  tree: z.record(path, sha1),
+  assets: z.record(path, z.string().regex(/^[0-9a-f]{64}$/)).optional(),
+  modes: z.record(path, z.string().regex(/^[0-7]{6}$/)).optional(),
+  skipped: z.array(path).max(LIMITS.assets).optional(),
+});
+
 export const ProjectDocSchema = z.object({
   format: z.literal(PROJECT_FORMAT),
   formatVersion: z.number().int().min(1),
@@ -156,4 +194,5 @@ export const ProjectDocSchema = z.object({
   scenes: z.record(path, SceneDocSchema),
   scripts: z.record(path, z.string().max(LIMITS.scriptBytes)),
   assets: z.record(path, AssetInfoSchema),
+  git: GitLinkSchema.optional(),
 });

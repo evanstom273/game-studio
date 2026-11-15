@@ -9,10 +9,11 @@
 import { GameStudioError, Signal, base64ToBytes, errorMessage, sha256Hex } from '@gs/shared';
 import { assetKindForPath, nodeTypes } from '@gs/core';
 import { TEMPLATES, applyCommands, createProject, generateTexture, projectDiagnostics, projectRevision, projectSummary, readImageSize, sceneOutline, type Command, type ProjectDoc, type TemplateId } from '@gs/project';
-import type { BridgeMethod, EditorRequest } from '../protocol.ts';
+import { isGitMethod, type BridgeMethod, type EditorRequest, type McpMethod } from '../protocol.ts';
 import { handleVisual, VISUAL_METHODS, VISUAL_READ, type VisualMethod } from './visual.ts';
 import { CloudStore, type Permissions } from './store.ts';
 import { checkScripts } from './syntax.ts';
+import { CloudGit } from './git.ts';
 
 export interface EditorLink {
   /** True when at least one editor tab is connected. */
@@ -147,8 +148,15 @@ export class CloudService {
     return { path, kind, size: bytes.length, revision: r.revision };
   }
 
+  private gitTools?: CloudGit;
+  /** The GitHub, CI and deploy tools (cloud/git.ts). */
+  git(): CloudGit {
+    return (this.gitTools ??= new CloudGit({ store: this.store, editor: this.editor, notify: (n) => this.notify(n), project: (ref) => this.project(ref) }));
+  }
+
   /** Runs one MCP tool. */
-  async handle(method: BridgeMethod, params: Record<string, unknown>): Promise<unknown> {
+  async handle(method: McpMethod, params: Record<string, unknown>): Promise<unknown> {
+    if (isGitMethod(method)) return this.git().handle(method, params);
     const perms = await this.permissions();
     this.check(method, perms);
     if ((VISUAL_METHODS as readonly string[]).includes(method)) {

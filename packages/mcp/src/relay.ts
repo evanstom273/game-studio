@@ -4,7 +4,7 @@
  * limits. Transport-agnostic: give it a way to send to and close sockets.
  */
 import { GameStudioError } from '../../shared/src/errors.ts';
-import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, BRIDGE_TIMEOUT_MS, type BridgeMessage, type BridgeMethod, type EditorRequest } from './protocol.ts';
+import { BRIDGE_MAX_PAYLOAD, BRIDGE_PROTOCOL_VERSION, BRIDGE_TIMEOUT_MS, type BridgeMessage, type EditorRequest, type McpMethod } from './protocol.ts';
 
 export interface RelaySocket {
   send(text: string): void;
@@ -94,7 +94,7 @@ export class RelayCore {
   }
 
   /** Sends a tool call to the editor and waits for its answer. */
-  request(method: BridgeMethod | EditorRequest, params: Record<string, unknown> = {}, timeoutMs = BRIDGE_TIMEOUT_MS): Promise<unknown> {
+  request(method: McpMethod | EditorRequest, params: Record<string, unknown> = {}, timeoutMs = BRIDGE_TIMEOUT_MS): Promise<unknown> {
     const owner = this.owner;
     if (!owner) return Promise.reject(new GameStudioError('E_NOT_CONNECTED', NOT_CONNECTED));
     const id = `r${++this.seq}`;

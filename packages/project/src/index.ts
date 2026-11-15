@@ -11,3 +11,4 @@ export * from './templates';
 export * from './archive';
 export * from './png';
 export * from './summary';
+export * from './files';

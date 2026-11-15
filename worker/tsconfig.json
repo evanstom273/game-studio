@@ -14,7 +14,8 @@
     "paths": {
       "@gs/shared": ["packages/shared/src/index.ts"],
       "@gs/core": ["packages/core/src/index.ts"],
-      "@gs/project": ["packages/project/src/index.ts"]
+      "@gs/project": ["packages/project/src/index.ts"],
+      "@gs/git": ["packages/git/src/index.ts"]
     }
   },
   "include": ["*.ts", "../packages/mcp/src/**/*.ts"]
