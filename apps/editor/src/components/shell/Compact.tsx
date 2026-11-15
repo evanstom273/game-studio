@@ -14,6 +14,8 @@ import { SceneTreePanel } from '../tree/SceneTreePanel';
 import { Inspector } from '../inspector/Inspector';
 import { FileBrowser } from '../files/FileBrowser';
 import { BottomPanel } from './BottomPanel';
+import { isVisualPath } from '../visual/store';
+import { requestAddNode } from '../visual/commands';
 
 const ITEMS: [Exclude<Sheet, null>, string, typeof ListTree][] = [
   ['scene', 'Scene', ListTree],
@@ -27,6 +29,8 @@ export function BottomNav() {
   const set = useUi((s) => s.set);
   const errors = useConsole((s) => s.entries.filter((e) => e.level === 'error').length);
   const sceneActive = useEditor((s) => s.active?.kind === 'scene');
+  // A visual script is open: Add opens its add-node menu.
+  const graphActive = useEditor((s) => s.active?.kind === 'script' && isVisualPath(s.active.path));
   return (
     <nav className="safe-bottom safe-x flex shrink-0 items-stretch border-t border-border bg-panel" data-testid="bottom-nav">
       {ITEMS.map(([id, label, Icon]) => (
@@ -42,7 +46,7 @@ export function BottomNav() {
           {id === 'console' && errors > 0 && <span className="absolute right-[calc(50%-18px)] top-1.5 h-2 w-2 rounded-full bg-err" />}
         </button>
       ))}
-      <button onClick={() => set({ dialog: 'add-node' })} disabled={!sceneActive} className="flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-muted disabled:opacity-40" data-testid="nav-add">
+      <button onClick={() => (graphActive ? (set({ sheet: null }), requestAddNode()) : set({ dialog: 'add-node' }))} disabled={!sceneActive && !graphActive} className="flex min-h-[52px] flex-1 flex-col items-center justify-center gap-0.5 text-[10px] text-muted disabled:opacity-40" data-testid="nav-add">
         <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-white">
           <Plus size={17} />
         </span>

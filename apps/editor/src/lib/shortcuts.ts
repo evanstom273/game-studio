@@ -2,6 +2,8 @@
 import { useEffect } from 'react';
 import { useUi } from '@editor/store/ui';
 import { deleteSelection, duplicateSelection, play, redo, save, setTool, stop, undo } from './actions';
+import { activeVisualPath } from '@editor/components/visual/store';
+import * as graph from '@editor/components/visual/commands';
 
 export const SHORTCUTS: [string, string][] = [
   ['Ctrl/⌘ S', 'Save'],
@@ -14,7 +16,9 @@ export const SHORTCUTS: [string, string][] = [
   ['Delete', 'Delete selected nodes'],
   ['Ctrl/⌘ D', 'Duplicate selected nodes'],
   ['Ctrl/⌘ A', 'Add a node'],
-  ['F', 'Frame the selection in the viewport'],
+  ['F', 'Frame the selection in the viewport (fit the graph in a visual script)'],
+  ['Tab', 'Visual scripts: add a node'],
+  ['Ctrl/⌘ C, X, V', 'Visual scripts: copy, cut, paste nodes'],
 ];
 
 function typing(e: KeyboardEvent) {
@@ -43,6 +47,11 @@ export function useShortcuts() {
         return;
       }
       if (typing(e) || useUi.getState().dialog) return;
+      // Visual scripts: the same keys act on the graph's nodes (undo/redo stay global).
+      if (activeVisualPath() && !e.altKey && handleGraphKey(e, mod, k)) {
+        e.preventDefault();
+        return;
+      }
       if (mod && k === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
@@ -67,4 +76,21 @@ export function useShortcuts() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
+}
+
+function handleGraphKey(e: KeyboardEvent, mod: boolean, k: string): boolean {
+  if (mod && !e.shiftKey) {
+    if (k === 'd') graph.duplicateSelection();
+    else if (k === 'a') graph.requestAddNode();
+    else if (k === 'c') graph.copySelection();
+    else if (k === 'x') graph.cutSelection();
+    else if (k === 'v') graph.paste();
+    else return false;
+    return true;
+  }
+  if (mod) return false;
+  if (e.key === 'Delete' || e.key === 'Backspace') graph.deleteSelection();
+  else if (e.key === 'Tab' && !e.shiftKey) graph.requestAddNode();
+  else return false;
+  return true;
 }

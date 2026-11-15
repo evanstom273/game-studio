@@ -1,0 +1,97 @@
+/* React Flow, Blueprint style (from Coding Studio), in Game Studio's colours. */
+.gs-graph .react-flow {
+  --xy-background-color: #11141a;
+  --xy-minimap-background-color: #161a22;
+  --xy-controls-button-background-color: #1c212b;
+  --xy-controls-button-background-color-hover: #242a36;
+  --xy-controls-button-color: #cbd2de;
+  --xy-controls-button-border-color: #2a303c;
+  --xy-selection-background-color: rgba(79, 140, 255, 0.08);
+  --xy-selection-border: 1px dashed #4f8cff;
+  --xy-edge-stroke-selected: #ffffff;
+  --xy-attribution-background-color: transparent;
+}
+.gs-graph .react-flow__node {
+  font-size: 12px;
+}
+.gs-graph .react-flow__node.selected > .bp-node,
+.gs-graph .react-flow__node:focus-visible > .bp-node {
+  box-shadow:
+    0 0 0 2px #f5a524,
+    0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.gs-graph .react-flow__handle {
+  border: none;
+  min-width: 0;
+  min-height: 0;
+}
+.gs-graph .react-flow__edge.selected .react-flow__edge-path {
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.7));
+}
+.gs-graph .react-flow__attribution {
+  background: transparent;
+}
+.gs-graph .react-flow__attribution a {
+  color: #4b5262;
+}
+.gs-graph .react-flow__controls {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.bp-input {
+  background: #0d1016;
+  border: 1px solid #2f3644;
+  border-radius: 3px;
+  color: #e3e6ec;
+  font-size: 11px;
+  padding: 1px 4px;
+  height: 18px;
+}
+.bp-input:focus {
+  border-color: var(--color-accent);
+  outline: none;
+}
+.bp-check {
+  width: 14px;
+  height: 14px;
+}
+
+/* Touch screens: bigger pins, rows and inline fields so fingers can hit them. */
+@media (pointer: coarse) {
+  .gs-graph .react-flow {
+    --pin-size: 18px;
+    --pin-exec-w: 17px;
+    --pin-exec-h: 20px;
+  }
+  /* An invisible margin around each pin makes it easier to grab without making it look bigger. */
+  .gs-graph .bp-pin::after {
+    content: '';
+    position: absolute;
+    inset: -8px;
+  }
+  .gs-graph .bp-row {
+    min-height: 34px;
+  }
+  .gs-graph .bp-header {
+    padding-top: 6px;
+    padding-bottom: 6px;
+    font-size: 13px;
+  }
+  .gs-graph .bp-collapse {
+    min-width: 28px;
+    min-height: 24px;
+  }
+  .bp-input {
+    height: 28px;
+    font-size: 14px;
+  }
+  .bp-check {
+    width: 22px;
+    height: 22px;
+  }
+  .gs-graph .react-flow__controls-button {
+    width: 36px;
+    height: 36px;
+  }
+}

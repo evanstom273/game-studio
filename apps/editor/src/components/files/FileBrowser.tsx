@@ -3,10 +3,11 @@
  * rename, delete, make main scene, instance a scene, or drop an image/model into the scene.
  */
 import { useMemo, useState } from 'react';
-import { Box, ChevronDown, ChevronRight, Clapperboard, FileAudio, FileCode2, FileType, Folder, Image as ImageIcon, MoreHorizontal, Plus, Star, Upload } from 'lucide-react';
+import { Box, ChevronDown, ChevronRight, Clapperboard, FileAudio, FileCode2, FileType, Folder, Image as ImageIcon, MoreHorizontal, Plus, Star, Upload, Workflow } from 'lucide-react';
 import { basename, errorMessage, extname } from '@gs/shared';
-import { nodeTypes } from '@gs/core';
+import { findDocNode, nodeTypes } from '@gs/core';
 import { scriptTemplate } from '@gs/scripting';
+import { ENGINE_EXPORTS, classNameFor, isVisualScriptPath, newVisualScript, serializeVisualScript } from '@gs/visual';
 import { useEditor } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
 import { toast } from '@editor/store/toasts';
@@ -40,6 +41,7 @@ function buildTree(entries: Entry[]): Dir {
 
 function FileIcon({ e }: { e: Entry }) {
   if (e.kind === 'scene') return <Clapperboard size={14} className="shrink-0 text-accent" />;
+  if (e.kind === 'script' && isVisualScriptPath(e.path)) return <Workflow size={14} className="shrink-0 text-node-physics" aria-label="Visual script" />;
   if (e.kind === 'script') return <FileCode2 size={14} className="shrink-0 text-node-audio" />;
   if (e.assetKind === 'image') return <ImageIcon size={14} className="shrink-0 text-node-2d" />;
   if (e.assetKind === 'audio') return <FileAudio size={14} className="shrink-0 text-node-audio" />;
@@ -192,7 +194,10 @@ export function FileBrowser() {
       <SectionHeader
         right={
           <>
-            <IconButton label="New script" className="h-6 min-w-6" onClick={() => newScript()}>
+            <IconButton label="New visual script" className="h-6 min-w-6" onClick={() => newVisualScriptFile()} data-testid="files-new-visual-script">
+              <Workflow size={13} />
+            </IconButton>
+            <IconButton label="New script" className="h-6 min-w-6" onClick={() => newScript()} data-testid="files-new-script">
               <FileCode2 size={13} />
             </IconButton>
             <IconButton label="New scene" className="h-6 min-w-6" onClick={() => useUi.getState().set({ dialog: 'new-scene' })} data-testid="files-new-scene">
@@ -220,6 +225,29 @@ function newScript() {
   const className = basename(path).replace(/\.\w+$/, '').replace(/(^|[_\-\s]+)(\w)/g, (_m, _a, c: string) => c.toUpperCase()).replace(/[^A-Za-z0-9]/g, '') || 'Script';
   try {
     s.dispatch([{ op: 'write_script', path, source: scriptTemplate('Node2D', /^[A-Za-z]/.test(className) ? className : `S${className}`) }], { label: `New ${path}` });
+    s.openDoc({ kind: 'script', path });
+  } catch (e) {
+    toast('error', errorMessage(e));
+  }
+}
+
+/**
+ * A new visual script (.vgraph). It extends the selected node's type (or the open scene's kind of
+ * root: Node2D / Node3D), which can be changed later in the graph editor's script panel.
+ */
+function newVisualScriptFile() {
+  const s = useEditor.getState();
+  const name = prompt('Visual script file name', 'scripts/new_visual_script.vgraph');
+  if (!name) return;
+  const path = (extname(name) ? name.replace(/\.[^./]+$/, '') : name) + '.vgraph';
+  const scene = s.active?.kind === 'scene' ? s.project?.scenes[s.active.path] : undefined;
+  const selected = scene && s.selection.length ? findDocNode(scene, s.selection[s.selection.length - 1])?.node : undefined;
+  const base = selected?.type ?? (scene && nodeTypes.dimension(scene.root.type) === '3d' ? 'Node3D' : 'Node2D');
+  let className = classNameFor(path);
+  if (!/^[A-Z]/.test(className)) className = `S${className}`;
+  if (ENGINE_EXPORTS.has(className)) className = `My${className}`;
+  try {
+    s.dispatch([{ op: 'write_script', path, source: serializeVisualScript(newVisualScript(className, base)) }], { label: `New ${path}` });
     s.openDoc({ kind: 'script', path });
   } catch (e) {
     toast('error', errorMessage(e));

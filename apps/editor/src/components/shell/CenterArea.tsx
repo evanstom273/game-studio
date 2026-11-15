@@ -1,7 +1,8 @@
-/** Document tabs plus the active document (scene viewport or script editor), or the running game. */
+/** Document tabs plus the active document (scene viewport, script editor or visual script editor), or the running game. */
 import { lazy, Suspense } from 'react';
-import { Clapperboard, FileCode2, Plus, X } from 'lucide-react';
+import { Clapperboard, FileCode2, Plus, Workflow, X } from 'lucide-react';
 import { basename } from '@gs/shared';
+import { isVisualScriptPath } from '@gs/visual';
 import { useEditor, type DocRef } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
 import { usePlay } from '@editor/play/player-host';
@@ -10,6 +11,7 @@ import { PlayView } from '../play/PlayView';
 
 const Viewport = lazy(() => import('../viewport/Viewport'));
 const ScriptEditor = lazy(() => import('../script/ScriptEditor'));
+const GraphEditor = lazy(() => import('../visual/GraphEditor'));
 
 function Tabs() {
   const docs = useEditor((s) => s.openDocs);
@@ -20,11 +22,12 @@ function Tabs() {
   return (
     <div className="flex min-h-9 shrink-0 items-stretch overflow-x-auto border-b border-border bg-panel" role="tablist" data-testid="doc-tabs">
       {docs.map((d) => {
-        const Icon = d.kind === 'scene' ? Clapperboard : FileCode2;
+        const visual = d.kind === 'script' && isVisualScriptPath(d.path);
+        const Icon = d.kind === 'scene' ? Clapperboard : visual ? Workflow : FileCode2;
         return (
           <div key={`${d.kind}:${d.path}`} className={cx('group flex shrink-0 items-center border-r border-border', isActive(d) ? 'bg-bg text-text' : 'text-muted hover:text-text')}>
             <button role="tab" aria-selected={isActive(d)} className="touch-target flex h-full items-center gap-1.5 pl-3 pr-1 text-[12px]" onClick={() => openDoc(d)} title={d.path} data-testid={`tab-${d.path}`}>
-              <Icon size={13} className={d.kind === 'scene' ? 'text-accent' : 'text-node-audio'} />
+              <Icon size={13} className={d.kind === 'scene' ? 'text-accent' : visual ? 'text-node-physics' : 'text-node-audio'} />
               {basename(d.path)}
               {d.kind === 'scene' && d.path === mainScene && <span className="text-[10px] text-faint">main</span>}
             </button>
@@ -61,7 +64,7 @@ export function CenterArea() {
             </div>
           </EmptyState>
         ) : (
-          <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading…</div>}>{active.kind === 'scene' ? <Viewport key={active.path} scenePath={active.path} /> : <ScriptEditor key={active.path} path={active.path} />}</Suspense>
+          <Suspense fallback={<div className="flex h-full items-center justify-center text-muted">Loading…</div>}>{active.kind === 'scene' ? <Viewport key={active.path} scenePath={active.path} /> : isVisualScriptPath(active.path) ? <GraphEditor key={active.path} path={active.path} /> : <ScriptEditor key={active.path} path={active.path} />}</Suspense>
         )}
       </div>
     </div>
