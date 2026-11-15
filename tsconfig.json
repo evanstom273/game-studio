@@ -32,6 +32,17 @@
       "@gs/player": ["packages/player/src/index.ts"],
       "@gs/exporter": ["packages/exporter/src/index.ts"],
       "@gs/mcp": ["packages/mcp/src/index.ts"],
+      "@gs/visual": ["packages/visual/gamestudio/src/index.ts"],
+      "@cs/node-registry/core-nodes": ["packages/visual/node-registry/src/core-nodes.ts"],
+      "@cs/type-system": ["packages/visual/type-system/src/index.ts"],
+      "@cs/graph-core": ["packages/visual/graph-core/src/index.ts"],
+      "@cs/intermediate-representation": ["packages/visual/intermediate-representation/src/index.ts"],
+      "@cs/node-registry": ["packages/visual/node-registry/src/index.ts"],
+      "@cs/language-sdk": ["packages/visual/language-sdk/src/index.ts"],
+      "@cs/compiler-core": ["packages/visual/compiler-core/src/index.ts"],
+      "@cs/language-typescript": ["packages/visual/language-typescript/src/index.ts"],
+      "@cs/styling": ["packages/visual/styling/src/index.ts"],
+      "@cs/project-format": ["packages/visual/project-format/src/index.ts"],
       "@editor/*": ["apps/editor/src/*"]
     }
   },

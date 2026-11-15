@@ -27,7 +27,7 @@ interface EsbuildMessage {
 
 export const ENGINE_MODULE = 'gamestudio';
 const ENTRY = '__gs_entry__.ts';
-const EXTS = ['', '.ts', '.js', '/index.ts', '/index.js'];
+const EXTS = ['', '.ts', '.js', '.vgraph', '/index.ts', '/index.js'];
 
 export interface CompileResult {
   ok: boolean;

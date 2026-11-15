@@ -12,7 +12,7 @@
 import type { Json } from '@gs/shared';
 
 export const SCENE_EXT = '.scene';
-export const SCRIPT_EXTS = ['.ts', '.js'] as const;
+export const SCRIPT_EXTS = ['.ts', '.js', '.vgraph'] as const;
 
 export interface NodeDoc {
   /** Unique within the scene. Stable across renames and moves (the editor, MCP and connections use it). */

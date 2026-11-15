@@ -5,6 +5,7 @@
 import * as esbuild from 'esbuild-wasm';
 import wasmURL from 'esbuild-wasm/esbuild.wasm?url';
 import { checkScript, compileScripts, type CompileResult, type EsbuildLike } from '@gs/scripting';
+import { expandVisualScripts, isVisualScriptPath } from '@gs/visual';
 import type { Diagnostic } from '@gs/project';
 import { useConsole } from '@editor/store/console';
 
@@ -26,8 +27,12 @@ export async function compileProjectScripts(scripts: Record<string, string>, opt
   if (key !== lastKey || !lastResult) {
     lastKey = key;
     lastResult = (async () => {
+      // Visual scripts (.vgraph) become ordinary TypeScript first.
+      const expanded = expandVisualScripts(scripts);
       await init();
-      return compileScripts(api, scripts, opts);
+      const r = await compileScripts(api, expanded.scripts, opts);
+      if (expanded.ok) return { ...r, diagnostics: [...expanded.diagnostics, ...r.diagnostics] };
+      return { ok: false, js: '', diagnostics: [...expanded.diagnostics, ...r.diagnostics.filter((d) => !d.file || !isVisualScriptPath(d.file))], scripts: Object.keys(scripts) };
     })();
   }
   const result = await lastResult;
@@ -40,6 +45,7 @@ export async function compileProjectScripts(scripts: Record<string, string>, opt
 
 /** Syntax check of one file while it is being edited. */
 export async function checkScriptSource(path: string, source: string): Promise<Diagnostic[]> {
+  if (isVisualScriptPath(path)) return expandVisualScripts({ [path]: source }).diagnostics;
   await init();
   return checkScript(api, path, source);
 }

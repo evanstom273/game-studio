@@ -112,7 +112,7 @@ const fail = (code: string, message: string, details?: unknown): never => {
 };
 
 const NAME_RE = /^[^/:.@%"]+$/;
-const SCRIPT_EXT = ['.ts', '.js'];
+const SCRIPT_EXT = ['.ts', '.js', '.vgraph'];
 
 class Draft {
   scenes: Record<string, SceneDoc>;
@@ -222,7 +222,7 @@ function scenePath(p: string) {
 
 function scriptPath(p: string) {
   const path = normalizePath(p);
-  if (!SCRIPT_EXT.includes(extname(path))) fail('E_BAD_PATH', `Script paths end in ".ts" or ".js" (got "${p}")`);
+  if (!SCRIPT_EXT.includes(extname(path))) fail('E_BAD_PATH', `Script paths end in ".ts", ".js" or ".vgraph" (a visual script) (got "${p}")`);
   return path;
 }
 

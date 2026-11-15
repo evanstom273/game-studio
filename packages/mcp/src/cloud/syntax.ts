@@ -5,8 +5,9 @@
  */
 import { parse } from '@babel/parser';
 import type { Diagnostic } from '@gs/project';
+import { compileVisualScript, isVisualScriptPath } from '@gs/visual';
 
-const EXTS = ['', '.ts', '.js', '/index.ts', '/index.js'];
+const EXTS = ['', '.ts', '.js', '.vgraph', '/index.ts', '/index.js'];
 
 function resolve(scripts: Record<string, string>, from: string, spec: string) {
   const parts = from.includes('/') ? from.slice(0, from.lastIndexOf('/')).split('/') : [];
@@ -30,6 +31,10 @@ export function checkScripts(scripts: Record<string, string>, only?: string[]): 
   const out: Diagnostic[] = [];
   for (const [path, source] of Object.entries(scripts)) {
     if (only && !only.includes(path)) continue;
+    if (isVisualScriptPath(path)) {
+      out.push(...compileVisualScript(path, source).diagnostics);
+      continue;
+    }
     let ast: ReturnType<typeof parse>;
     try {
       ast = parse(source, { sourceType: 'module', plugins: path.endsWith('.js') ? [] : ['typescript'], errorRecovery: true });
