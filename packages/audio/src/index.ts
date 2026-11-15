@@ -2,8 +2,11 @@
  * Audio server on the Web Audio API. Sounds are fetched and decoded once per path. Browsers only
  * allow sound after a user gesture, so the context starts suspended and `unlock()` (called on the
  * first key/pointer press) resumes it.
+ *
+ * Positional players (AudioStreamPlayer2D/3D) report a volume and stereo pan for the current
+ * listener (`getSpatialMix`); they get a StereoPannerNode and are updated every frame they play.
  */
-import type { AudioServer, AudioStreamPlayer } from '@gs/core';
+import type { AudioPlayback, AudioServer } from '@gs/core';
 
 export interface AudioAssetUrls {
   url(path: string): string | null;
@@ -12,14 +15,18 @@ export interface AudioAssetUrls {
 interface Playing {
   source: AudioBufferSourceNode;
   gain: GainNode;
+  panner: StereoPannerNode | null;
 }
+
+/** Smooths parameter changes so moving sounds don't click ("zipper noise"). */
+const SMOOTHING = 0.03;
 
 const dbToGain = (db: number) => Math.pow(10, db / 20);
 
 export class WebAudioServer implements AudioServer {
   private ctx: AudioContext | null = null;
   private buffers = new Map<string, Promise<AudioBuffer | null>>();
-  private playing = new Map<AudioStreamPlayer, Playing>();
+  private playing = new Map<AudioPlayback, Playing>();
   /** Reports decode failures. */
   onError: ((message: string) => void) | null = null;
 
@@ -59,7 +66,14 @@ export class WebAudioServer implements AudioServer {
     return p;
   }
 
-  play(player: AudioStreamPlayer, fromPosition: number) {
+  /** Volume (linear) and pan for a player right now. */
+  private mix(player: AudioPlayback) {
+    const spatial = player.getSpatialMix?.();
+    const gain = dbToGain(player.volumeDb) * (spatial ? Math.max(0, spatial.gain) : 1);
+    return { gain: Number.isFinite(gain) ? gain : 0, pan: spatial ? Math.max(-1, Math.min(1, spatial.pan || 0)) : null };
+  }
+
+  play(player: AudioPlayback, fromPosition: number) {
     const path = player.stream?.resourcePath;
     if (!path) return;
     this.stop(player);
@@ -75,20 +89,26 @@ export class WebAudioServer implements AudioServer {
       source.loop = player.loop;
       source.playbackRate.value = player.pitchScale;
       const gain = ctx.createGain();
-      gain.gain.value = dbToGain(player.volumeDb);
-      source.connect(gain).connect(ctx.destination);
+      const m = this.mix(player);
+      gain.gain.value = m.gain;
+      let panner: StereoPannerNode | null = null;
+      if (player.getSpatialMix && typeof ctx.createStereoPanner === 'function') {
+        panner = ctx.createStereoPanner();
+        panner.pan.value = m.pan ?? 0;
+        source.connect(gain).connect(panner).connect(ctx.destination);
+      } else source.connect(gain).connect(ctx.destination);
       source.onended = () => {
         if (this.playing.get(player)?.source !== source) return;
         this.playing.delete(player);
         player.__playing = false;
         player.finished.emit();
       };
-      this.playing.set(player, { source, gain });
+      this.playing.set(player, { source, gain, panner });
       source.start(0, Math.max(0, fromPosition));
     });
   }
 
-  stop(player: AudioStreamPlayer) {
+  stop(player: AudioPlayback) {
     const p = this.playing.get(player);
     player.__playing = false;
     if (!p) return;
@@ -99,13 +119,18 @@ export class WebAudioServer implements AudioServer {
       /* not started */
     }
     p.source.disconnect();
+    p.panner?.disconnect();
   }
 
-  update(player: AudioStreamPlayer) {
+  update(player: AudioPlayback) {
     const p = this.playing.get(player);
-    if (!p) return;
-    p.gain.gain.value = dbToGain(player.volumeDb);
-    p.source.playbackRate.value = player.pitchScale;
+    const ctx = this.ctx;
+    if (!p || !ctx) return;
+    const m = this.mix(player);
+    const t = ctx.currentTime;
+    if (Math.abs(p.gain.gain.value - m.gain) > 1e-4) p.gain.gain.setTargetAtTime(m.gain, t, SMOOTHING);
+    if (p.panner && m.pan !== null && Math.abs(p.panner.pan.value - m.pan) > 1e-4) p.panner.pan.setTargetAtTime(m.pan, t, SMOOTHING);
+    if (p.source.playbackRate.value !== player.pitchScale) p.source.playbackRate.value = player.pitchScale;
     p.source.loop = player.loop;
   }
 

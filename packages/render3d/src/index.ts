@@ -11,7 +11,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js';
 import { Color as GsColor } from '@gs/shared';
-import { Camera3D, CollisionShape3D, DEFAULT_MATERIAL, DirectionalLight3D, MeshInstance3D, Node3D, PointLight3D, SpotLight3D, WorldEnvironment, type MaterialData, type MeshData, type Node, type RenderServer, type SceneTree } from '@gs/core';
+import { CPUParticles3D, Camera3D, CollisionShape3D, DEFAULT_MATERIAL, DirectionalLight3D, Label3D, Marker3D, MeshInstance3D, Node3D, Path3D, PointLight3D, RayCast3D, SpotLight3D, Sprite3D, VisibleOnScreenNotifier3D, WorldEnvironment, type MaterialData, type MeshData, type Node, type RenderServer, type SceneTree, type SpriteBase3D } from '@gs/core';
 
 export type StretchMode = 'fit' | 'expand' | 'stretch' | 'none';
 
@@ -39,7 +39,39 @@ interface Visual {
   key: string;
   matKey: string;
   seen: number;
+  /** Objects drawn outside the node's group (world-space particles). */
+  extra?: THREE.Object3D;
 }
+
+const PARTICLE_VERTEX = `
+attribute float size;
+attribute vec4 color;
+uniform float uHalfHeight;
+varying vec4 vColor;
+void main() {
+  vColor = color;
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  gl_Position = projectionMatrix * mv;
+  float depth = projectionMatrix[2][3] != 0.0 ? max(-mv.z, 0.0001) : 1.0;
+  gl_PointSize = size * projectionMatrix[1][1] * uHalfHeight / depth;
+}`;
+
+const PARTICLE_FRAGMENT = `
+uniform sampler2D map;
+uniform bool useMap;
+varying vec4 vColor;
+void main() {
+  vec4 col = vColor;
+  if (useMap) {
+    vec4 t = texture2D(map, vec2(gl_PointCoord.x, 1.0 - gl_PointCoord.y));
+    col *= vec4(pow(t.rgb, vec3(1.0 / 2.2)), t.a);
+  } else {
+    float d = length(gl_PointCoord - 0.5);
+    col.a *= smoothstep(0.5, 0.3, d);
+  }
+  if (col.a <= 0.003) discard;
+  gl_FragColor = col;
+}`;
 
 const LIGHT_SCALE = { directional: 2.5, point: 25, spot: 40, ambient: 2.2 };
 
@@ -66,6 +98,11 @@ export class Renderer3D implements RenderServer {
   /** Viewport rectangle the game was drawn in (CSS px), for input mapping. */
   viewport = { x: 0, y: 0, w: 1, h: 1 };
   private warnedNoCamera = false;
+  /** Sprites and labels to turn toward the camera this frame. */
+  private billboards: { v: Visual; mode: 'enabled' | 'yBillboard' }[] = [];
+  /** World-space particles live here (they must not move with their emitter). */
+  private worldRoot = new THREE.Group();
+  private particleMaterials = new Set<THREE.ShaderMaterial>();
 
   constructor(private opts: Renderer3DOptions) {
     this.renderer = new THREE.WebGLRenderer({ canvas: opts.canvas, antialias: !opts.pixelArt, alpha: false, powerPreference: 'high-performance' });
@@ -74,7 +111,7 @@ export class Renderer3D implements RenderServer {
     this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.scene.add(this.ambient, this.helpers);
+    this.scene.add(this.ambient, this.helpers, this.worldRoot);
     this.previewSun.position.set(4, 8, 6);
     this.fallbackCamera.position.set(0, 2, 6);
     this.fallbackCamera.lookAt(0, 0, 0);
@@ -106,6 +143,7 @@ export class Renderer3D implements RenderServer {
 
   render() {
     this.frame++;
+    this.billboards = [];
     let env: WorldEnvironment | null = null;
     let lights = 0;
     const visit = (n: Node, parentGroup: THREE.Object3D) => {
@@ -122,6 +160,10 @@ export class Renderer3D implements RenderServer {
       if (v.seen !== this.frame) {
         v.group.removeFromParent();
         disposeTree(v.group);
+        if (v.extra) {
+          v.extra.removeFromParent();
+          disposeTree(v.extra);
+        }
         this.visuals.delete(node);
       }
     }
@@ -132,6 +174,30 @@ export class Renderer3D implements RenderServer {
 
     const camera = this.activeCamera();
     this.drawWith(camera);
+  }
+
+  /** Turns billboarded sprites and labels toward the camera (after the scene's transforms are known). */
+  private faceCamera(camera: THREE.Camera) {
+    if (!this.billboards.length) return;
+    this.scene.updateMatrixWorld();
+    camera.updateMatrixWorld();
+    const camQ = new THREE.Quaternion();
+    const camPos = new THREE.Vector3();
+    camera.matrixWorld.decompose(camPos, camQ, new THREE.Vector3());
+    const parentQ = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    for (const { v, mode } of this.billboards) {
+      const content = v.content;
+      if (!content) continue;
+      v.group.matrixWorld.decompose(pos, parentQ, new THREE.Vector3());
+      let target: THREE.Quaternion;
+      if (mode === 'enabled') target = camQ.clone();
+      else {
+        const yaw = Math.atan2(camPos.x - pos.x, camPos.z - pos.z);
+        target = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0, 'YXZ'));
+      }
+      content.quaternion.copy(parentQ.invert().multiply(target));
+    }
   }
 
   private activeCamera(): THREE.Camera {
@@ -157,6 +223,12 @@ export class Renderer3D implements RenderServer {
       vp = { x: (cw - w) / 2, y: (ch - h) / 2, w, h };
     }
     this.viewport = vp;
+    if (this.tree && !this.editorCamera) {
+      // The game's viewport in game units, for Camera3D.unprojectPosition and on-screen notifiers.
+      const fit = (this.opts.stretch ?? 'fit') === 'fit';
+      const s = Math.min(cw / this.opts.width, ch / this.opts.height) || 1;
+      this.tree.viewportSize.set(fit ? this.opts.width : cw / s, fit ? this.opts.height : ch / s);
+    }
     const aspect = vp.w / Math.max(1, vp.h);
     if (camera instanceof THREE.PerspectiveCamera && camera.aspect !== aspect) {
       camera.aspect = aspect;
@@ -178,6 +250,9 @@ export class Renderer3D implements RenderServer {
       r.setScissor(vp.x, ch - vp.y - vp.h, vp.w, vp.h);
     } else r.setScissorTest(false);
     r.setViewport(vp.x, ch - vp.y - vp.h, vp.w, vp.h);
+    this.faceCamera(camera);
+    const halfHeight = (vp.h * r.getPixelRatio()) / 2;
+    for (const m of this.particleMaterials) m.uniforms.uHalfHeight.value = halfHeight;
     r.render(this.scene, camera);
     r.setScissorTest(false);
   }
@@ -217,6 +292,10 @@ export class Renderer3D implements RenderServer {
     else if (n instanceof DirectionalLight3D || n instanceof PointLight3D || n instanceof SpotLight3D) this.syncLight(n, v);
     else if (n instanceof Camera3D) this.syncCamera(n, v);
     else if (n instanceof CollisionShape3D) this.syncShape(n, v);
+    else if (n instanceof Sprite3D) this.syncSprite(n, v);
+    else if (n instanceof Label3D) this.syncLabel(n, v);
+    else if (n instanceof CPUParticles3D) this.syncParticles(n, v);
+    else if (this.opts.editor) this.syncEditorHelper(n, v);
     return v;
   }
 
@@ -433,8 +512,209 @@ export class Renderer3D implements RenderServer {
     if (v.content) v.content.renderOrder = 10;
   }
 
+  // --- sprites and labels -----------------------------------------------------------------------------
+
+  /** A quad for a sprite or label: size in metres, UVs for the frame, flags from the node. */
+  private quad(n: SpriteBase3D, widthPx: number, heightPx: number, map: THREE.Texture, uv: [number, number, number, number]): THREE.Mesh {
+    const w = widthPx * n.pixelSize;
+    const h = heightPx * n.pixelSize;
+    const geo = new THREE.PlaneGeometry(w, h);
+    let [u0, v0, u1, v1] = uv;
+    if (n.flipH) [u0, u1] = [u1, u0];
+    if (n.flipV) [v0, v1] = [v1, v0];
+    const uvs = geo.getAttribute('uv') as THREE.BufferAttribute;
+    // PlaneGeometry vertex order: top-left, top-right, bottom-left, bottom-right.
+    uvs.setXY(0, u0, v1);
+    uvs.setXY(1, u1, v1);
+    uvs.setXY(2, u0, v0);
+    uvs.setXY(3, u1, v0);
+    uvs.needsUpdate = true;
+    // Centred quads sit on the node; otherwise the node is the top-left corner. Offset is in pixels (y down).
+    const ox = (n.centered ? 0 : w / 2) + n.offset.x * n.pixelSize;
+    const oy = (n.centered ? 0 : -h / 2) - n.offset.y * n.pixelSize;
+    geo.translate(ox, oy, 0);
+    const color = new THREE.Color().setRGB(n.modulate.r, n.modulate.g, n.modulate.b, THREE.SRGBColorSpace);
+    const params = { map, color, transparent: true, opacity: n.modulate.a, alphaTest: 0.01, side: n.doubleSided ? THREE.DoubleSide : THREE.FrontSide, depthTest: !n.noDepthTest, depthWrite: !n.noDepthTest };
+    const mesh = new THREE.Mesh(geo, n.shaded ? new THREE.MeshStandardMaterial({ ...params, roughness: 1, metalness: 0 }) : new THREE.MeshBasicMaterial(params));
+    if (n.noDepthTest) mesh.renderOrder = 100;
+    return mesh;
+  }
+
+  private spriteFlags(n: SpriteBase3D) {
+    return [n.pixelSize, n.centered, n.offset.x, n.offset.y, n.flipH, n.flipV, n.modulate.toHex(), n.shaded, n.doubleSided, n.noDepthTest].join('|');
+  }
+
+  private trackBillboard(n: SpriteBase3D, v: Visual) {
+    if (n.billboard !== 'disabled') this.billboards.push({ v, mode: n.billboard });
+    else v.content?.quaternion.identity();
+  }
+
+  private syncSprite(n: Sprite3D, v: Visual) {
+    const path = n.texture?.resourcePath ?? null;
+    const tex = path ? this.texture(path) : null;
+    const key = `${path}|${!!tex}|${n.hframes}|${n.vframes}|${n.frame}|${this.spriteFlags(n)}`;
+    if (key !== v.key) {
+      v.key = key;
+      if (!tex || !n.texture) this.setContent(v, null);
+      else {
+        const img = tex.image as { width?: number; height?: number } | undefined;
+        const tw = n.texture.width || img?.width || 1;
+        const th = n.texture.height || img?.height || 1;
+        const hf = Math.max(1, n.hframes);
+        const vf = Math.max(1, n.vframes);
+        const frame = Math.max(0, Math.min(hf * vf - 1, Math.floor(n.frame)));
+        const fx = frame % hf;
+        const fy = Math.floor(frame / hf);
+        // Texture v runs bottom-up; frames are numbered top-down.
+        const uv: [number, number, number, number] = [fx / hf, 1 - (fy + 1) / vf, (fx + 1) / hf, 1 - fy / vf];
+        this.setContent(v, this.quad(n, tw / hf, th / vf, tex, uv));
+      }
+    }
+    this.trackBillboard(n, v);
+  }
+
+  private syncLabel(n: Label3D, v: Visual) {
+    const key = `${n.text}|${n.fontSize}|${n.outlineSize}|${n.outlineColor.toHex()}|${n.horizontalAlignment}|${this.spriteFlags(n)}`;
+    if (key !== v.key) {
+      v.key = key;
+      const canvas = drawLabel(n);
+      if (!canvas) this.setContent(v, null);
+      else {
+        const tex = new THREE.CanvasTexture(canvas);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.anisotropy = 4;
+        const mesh = this.quad(n, canvas.width, canvas.height, tex, [0, 0, 1, 1]);
+        // The label's text colour is baked into the texture; modulate only adds transparency.
+        (mesh.material as THREE.MeshBasicMaterial).color.set(0xffffff);
+        mesh.userData.gsOwnTexture = tex;
+        this.setContent(v, mesh);
+      }
+    }
+    this.trackBillboard(n, v);
+  }
+
+  // --- particles ----------------------------------------------------------------------------------------
+
+  private syncParticles(n: CPUParticles3D, v: Visual) {
+    const sim = n.sim;
+    const count = sim.count;
+    const path = n.texture?.resourcePath ?? null;
+    const tex = path ? this.texture(path) : null;
+    let points = v.extra as THREE.Points | undefined;
+    const key = `${count}|${path}|${!!tex}`;
+    if (!points || v.key !== key) {
+      v.key = key;
+      if (points) {
+        points.removeFromParent();
+        disposeTree(points);
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(count * 3), 3).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('size', new THREE.BufferAttribute(new Float32Array(count), 1).setUsage(THREE.DynamicDrawUsage));
+      geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(count * 4), 4).setUsage(THREE.DynamicDrawUsage));
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: PARTICLE_VERTEX,
+        fragmentShader: PARTICLE_FRAGMENT,
+        uniforms: { uHalfHeight: { value: 300 }, map: { value: tex }, useMap: { value: !!tex } },
+        transparent: true,
+        depthWrite: false,
+      });
+      this.particleMaterials.add(mat);
+      mat.addEventListener('dispose', () => this.particleMaterials.delete(mat));
+      points = new THREE.Points(geo, mat);
+      points.frustumCulled = false;
+      points.userData.gsNode = n;
+      v.extra = points;
+    }
+    // World-space particles stay where they were emitted; local ones move with the emitter.
+    const parent = n.localCoords ? v.group : this.worldRoot;
+    if (points.parent !== parent) parent.add(points);
+    points.visible = n.isVisibleInTree();
+    const geo = points.geometry;
+    const pos = geo.getAttribute('position') as THREE.BufferAttribute;
+    const size = geo.getAttribute('size') as THREE.BufferAttribute;
+    const col = geo.getAttribute('color') as THREE.BufferAttribute;
+    const p = pos.array as Float32Array;
+    const sz = size.array as Float32Array;
+    const c = col.array as Float32Array;
+    const a = n.color;
+    const b = n.colorEnd;
+    for (let i = 0; i < count; i++) {
+      if (!sim.alive[i]) {
+        sz[i] = 0;
+        c[i * 4 + 3] = 0;
+        continue;
+      }
+      p[i * 3] = sim.pos[i * 3];
+      p[i * 3 + 1] = sim.pos[i * 3 + 1];
+      p[i * 3 + 2] = sim.pos[i * 3 + 2];
+      sz[i] = n.particleSize * sim.scale[i];
+      const t = sim.ageRatio(i);
+      c[i * 4] = a.r + (b.r - a.r) * t;
+      c[i * 4 + 1] = a.g + (b.g - a.g) * t;
+      c[i * 4 + 2] = a.b + (b.b - a.b) * t;
+      c[i * 4 + 3] = a.a + (b.a - a.a) * t;
+    }
+    pos.needsUpdate = true;
+    size.needsUpdate = true;
+    col.needsUpdate = true;
+  }
+
+  // --- editor helpers ------------------------------------------------------------------------------------
+
+  private syncEditorHelper(n: Node3D, v: Visual) {
+    let key: string;
+    let build: () => THREE.Object3D | null;
+    if (n instanceof Marker3D) {
+      const e = n.gizmoExtents;
+      key = `marker|${e}`;
+      build = () => {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([-e, 0, 0, e, 0, 0, 0, -e, 0, 0, e, 0, 0, 0, -e, 0, 0, e], 3));
+        geo.setAttribute('color', new THREE.Float32BufferAttribute([1, 0.3, 0.3, 1, 0.3, 0.3, 0.4, 1, 0.4, 0.4, 1, 0.4, 0.35, 0.55, 1, 0.35, 0.55, 1], 3));
+        return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, depthTest: false, transparent: true }));
+      };
+    } else if (n instanceof Path3D) {
+      const pts = n.getCurve().points;
+      key = `path|${JSON.stringify(pts)}`;
+      build = () => {
+        if (pts.length < 2) return null;
+        const arr: number[] = [];
+        for (let i = 1; i < pts.length; i++) arr.push(...pts[i - 1], ...pts[i]);
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(arr, 3));
+        return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: 0x7dd3fc }));
+      };
+    } else if (n instanceof RayCast3D) {
+      const t = n.targetPosition;
+      key = `ray|${t.x},${t.y},${t.z}|${n.enabled}`;
+      build = () => {
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, t.x, t.y, t.z], 3));
+        return new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color: n.enabled ? 0xf87171 : 0x8b93a4, depthTest: false, transparent: true }));
+      };
+    } else if (n instanceof VisibleOnScreenNotifier3D) {
+      const p = n.aabbPosition;
+      const s = n.aabbSize;
+      key = `notifier|${p.x},${p.y},${p.z}|${s.x},${s.y},${s.z}`;
+      build = () => {
+        const box = new THREE.BoxGeometry(Math.max(1e-3, s.x), Math.max(1e-3, s.y), Math.max(1e-3, s.z));
+        box.translate(p.x + s.x / 2, p.y + s.y / 2, p.z + s.z / 2);
+        const lines = new THREE.LineSegments(new THREE.EdgesGeometry(box), new THREE.LineBasicMaterial({ color: 0xc084fc, transparent: true, opacity: 0.8 }));
+        box.dispose();
+        return lines;
+      };
+    } else return;
+    if (key === v.key) return;
+    v.key = key;
+    this.setContent(v, build());
+  }
+
   dispose() {
-    for (const v of this.visuals.values()) disposeTree(v.group);
+    for (const v of this.visuals.values()) {
+      disposeTree(v.group);
+      if (v.extra) disposeTree(v.extra);
+    }
     this.visuals.clear();
     for (const t of this.textures.values()) if (t instanceof THREE.Texture) t.dispose();
     for (const m of this.models.values()) if (m instanceof THREE.Object3D) disposeTree(m, true);
@@ -446,11 +726,46 @@ function disposeTree(obj: THREE.Object3D, includeShared = false) {
   if (obj.userData.gsShared && !includeShared) return;
   obj.traverse((o) => {
     if (o !== obj && o.userData.gsShared && !includeShared) return;
-    if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments) {
+    if (o instanceof THREE.Mesh || o instanceof THREE.LineSegments || o instanceof THREE.Points) {
       o.geometry?.dispose();
       const mats = Array.isArray(o.material) ? o.material : [o.material];
       for (const m of mats) m?.dispose();
+      (o.userData.gsOwnTexture as THREE.Texture | undefined)?.dispose();
     }
     if (o instanceof THREE.Light) o.dispose();
   });
+}
+
+/** Renders a Label3D's text (with outline) to a canvas; null when there's nothing to draw. */
+function drawLabel(n: Label3D): HTMLCanvasElement | null {
+  if (typeof document === 'undefined' || !n.text) return null;
+  const lines = n.text.split('\n');
+  const font = `${Math.max(1, n.fontSize)}px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif`;
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.font = font;
+  const pad = Math.ceil(n.outlineSize / 2) + 2;
+  const lineHeight = Math.ceil(n.fontSize * 1.2);
+  const width = Math.ceil(Math.max(1, ...lines.map((l) => ctx.measureText(l).width))) + pad * 2;
+  canvas.width = width;
+  canvas.height = lineHeight * lines.length + pad * 2;
+  ctx.font = font;
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = n.horizontalAlignment;
+  ctx.lineJoin = 'round';
+  const x = n.horizontalAlignment === 'left' ? pad : n.horizontalAlignment === 'right' ? width - pad : width / 2;
+  lines.forEach((line, i) => {
+    const y = pad + lineHeight * (i + 0.5);
+    if (n.outlineSize > 0) {
+      ctx.lineWidth = n.outlineSize;
+      ctx.strokeStyle = n.outlineColor.toHex().slice(0, 7);
+      ctx.globalAlpha = n.outlineColor.a;
+      ctx.strokeText(line, x, y);
+    }
+    ctx.globalAlpha = 1;
+    ctx.fillStyle = n.modulate.toHex().slice(0, 7);
+    ctx.fillText(line, x, y);
+  });
+  return canvas;
 }

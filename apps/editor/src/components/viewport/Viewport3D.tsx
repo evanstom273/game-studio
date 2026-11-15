@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { errorMessage } from '@gs/shared';
-import { Camera3D, DirectionalLight3D, Node3D, PointLight3D, SpotLight3D, type Node } from '@gs/core';
+import { CPUParticles3D, Camera3D, DirectionalLight3D, Node3D, PointLight3D, SpotLight3D, type Node } from '@gs/core';
 import { Renderer3D } from '@gs/render3d';
 import { useEditor } from '@editor/store/editor';
 import { useUi } from '@editor/store/ui';
@@ -65,6 +65,7 @@ export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: st
     const gizmoHelper = gizmo.getHelper();
     renderer.helpers.add(gizmoHelper);
     let raf = 0;
+    let lastParticleTick = 0;
     let dragSession = 0;
     let disposed = false;
 
@@ -138,6 +139,17 @@ export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: st
 
     function draw() {
       raf = 0;
+      // Particles animate in the editor too: there's no game loop here, so step them per frame.
+      const now = performance.now();
+      const dt = Math.min(0.1, lastParticleTick ? (now - lastParticleTick) / 1000 : 1 / 60);
+      let animating = false;
+      live.root?.walk((n: Node) => {
+        if (!(n instanceof CPUParticles3D) || !n.isVisibleInTree()) return;
+        if (!n.emitting && n.sim.aliveCount() === 0) return;
+        n.simulate(dt);
+        animating = true;
+      });
+      lastParticleTick = animating ? now : 0;
       const preview = previewRef.current;
       renderer.editorCamera = preview ? null : camera;
       renderer.tree = null;
@@ -170,6 +182,7 @@ export default function Viewport3D({ scenePath, cameraPreview }: { scenePath: st
         if (markers.children.length !== before || rebuild) schedule();
       }
       renderer.render();
+      if (animating) schedule();
     }
 
     // Gizmo edits → commands (one undo step per drag).
