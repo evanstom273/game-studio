@@ -91,7 +91,7 @@ export class ScriptRegistry {
    */
   instantiate(path: string, type: string, registry: NodeRegistry): Node {
     const cls = this.classes.get(path);
-    if (!cls) throw new GameStudioError('E_SCRIPT', this.loadErrors.get(path) ?? `Script "${path}" was not found or failed to compile`);
+    if (!cls) throw new GameStudioError('E_SCRIPT', this.loadErrors.get(path) ?? `Script "${path}" has no default-exported class (export default class … extends …), or it failed to compile`);
     const nodeCtor = registry.require(type).ctor;
     if (cls === nodeCtor || cls.prototype instanceof nodeCtor) return new cls();
     const scriptBase = registry.typeOfClass(cls);

@@ -1,0 +1,137 @@
+@import 'tailwindcss';
+
+/*
+ * Game Studio shares its visual language with Coding Studio and GUI Studio: dark panels, one blue
+ * accent, Inter at 13px, uppercase section labels, thin borders. Node colours follow Godot's
+ * convention (2D blue, 3D pink-red, core white) so they read at a glance.
+ */
+@theme {
+  --color-bg: #0f1218;
+  --color-panel: #161a22;
+  --color-panel-2: #1c212b;
+  --color-panel-3: #242a36;
+  --color-border: #2a303c;
+  --color-border-strong: #3a4250;
+  --color-muted: #8b93a4;
+  --color-faint: #5b6372;
+  --color-text: #e3e6ec;
+  --color-accent: #4f8cff;
+  --color-accent-2: #3a6fd8;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-err: #f87171;
+  --color-node-2d: #8da5f3;
+  --color-node-3d: #fc7f7f;
+  --color-node-core: #d6dae3;
+  --color-node-physics: #7ed8b2;
+  --color-node-audio: #f5c46b;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Code', Menlo, Consolas, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  overflow: hidden;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* Use the dynamic viewport so mobile browser toolbars and on-screen keyboards don't cover the editor. */
+#root {
+  height: 100dvh;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #39404e transparent;
+}
+
+::selection {
+  background: rgba(79, 140, 255, 0.35);
+}
+
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+input[type='number']::-webkit-inner-spin-button {
+  opacity: 0.35;
+}
+
+.checker {
+  background-color: #2a2d34;
+  background-image: linear-gradient(45deg, #23262c 25%, transparent 25%), linear-gradient(-45deg, #23262c 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #23262c 75%), linear-gradient(-45deg, transparent 75%, #23262c 75%);
+  background-size: 12px 12px;
+  background-position:
+    0 0,
+    0 6px,
+    6px -6px,
+    -6px 0;
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.safe-top {
+  padding-top: env(safe-area-inset-top);
+}
+.safe-x {
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
+}
+
+/* Touch screens: larger targets everywhere (≥ 40px). */
+@media (pointer: coarse) {
+  .touch-target {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  .gs-row {
+    min-height: 40px;
+  }
+  .gs-input {
+    height: 36px !important;
+    font-size: 15px !important;
+  }
+}
+
+/* CodeMirror */
+.cm-editor {
+  height: 100%;
+  background: #11141a;
+  font-size: 13px;
+}
+.cm-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.55;
+}
+.cm-editor.cm-focused {
+  outline: none;
+}
+@media (pointer: coarse) {
+  .cm-editor {
+    font-size: 15px;
+  }
+}

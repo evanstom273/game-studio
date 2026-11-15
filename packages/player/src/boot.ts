@@ -65,12 +65,11 @@ export async function bootGame(opts: BootOptions): Promise<GameHandle> {
     scripts: opts.scripts,
     resources: null,
     scene: (p) => data.scenes[p],
-    onProblem: (m) => log('warn', m),
+    onProblem: (m) => log('error', m),
   };
   const resources = new ResourceLoader({ asset: (p) => data.assets[p], scene: (p) => data.scenes[p] }, (ps) => instantiateScene(ps.doc, instOpts, ps.resourcePath));
   instOpts.resources = resources;
   tree.resources = resources;
-  for (const [path, err] of opts.scripts.loadErrors) log('error', err, path);
 
   if (need.includes('physics2d')) engine.setPhysics2D(await modules.createPhysics2D!(settings.physics.gravity2d, tree));
   if (need.includes('physics3d')) engine.setPhysics3D(await modules.createPhysics3D!(settings.physics.gravity3d));
