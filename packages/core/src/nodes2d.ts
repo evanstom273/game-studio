@@ -5,6 +5,7 @@
 import { Color, Rect2, Signal, Transform2D, Vector2, degToRad, radToDeg } from '@gs/shared';
 import { Node } from './node';
 import type { Texture } from './resources';
+import { Input } from './input';
 
 export class Node2D extends Node {
   static override readonly typeName: string = 'Node2D';
@@ -106,6 +107,17 @@ export class Node2D extends Node {
   }
   toGlobal(localPoint: Vector2) {
     return this.globalTransform.apply(localPoint);
+  }
+
+  /** The pointer position in world coordinates (through the current camera). */
+  getGlobalMousePosition(): Vector2 {
+    const tree = this.tree;
+    const p = Input.getPointerPosition();
+    return tree ? tree.canvasTransform.invert().apply(p) : p;
+  }
+  /** The pointer position in this node's local coordinates. */
+  getLocalMousePosition(): Vector2 {
+    return this.toLocal(this.getGlobalMousePosition());
   }
 
   /** Local-space bounds used for picking in the editor (null = just the origin). */

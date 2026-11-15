@@ -3,7 +3,7 @@
  * groups, pausing, deferred deletion, tweens and scene changes, and runs the per-frame and
  * per-physics-tick callbacks in tree order.
  */
-import { GameStudioError, Signal, errorMessage } from '@gs/shared';
+import { GameStudioError, Signal, Transform2D, Vector2, errorMessage } from '@gs/shared';
 import { Node } from './node';
 import { Camera2D } from './nodes2d';
 import { Camera3D } from './nodes3d';
@@ -46,6 +46,10 @@ export class SceneTree {
   currentCamera2D: Camera2D | null = null;
   currentCamera3D: Camera3D | null = null;
   resources: ResourceLoader | null = null;
+  /** World → viewport transform of the 2D canvas (set by the 2D renderer each frame). */
+  canvasTransform = Transform2D.identity();
+  /** Size of the game viewport in pixels (the project's display size, or more with stretch "expand"). */
+  viewportSize = new Vector2(1152, 648);
 
   readonly nodeAdded = new Signal<[node: Node]>('nodeAdded');
   readonly nodeRemoved = new Signal<[node: Node]>('nodeRemoved');
